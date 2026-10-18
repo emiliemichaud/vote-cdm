@@ -6,8 +6,11 @@ const { Server } = require('socket.io');
 const { registerHandlers, cleanupExpiredSessions } = require('./sockets/handlers');
 
 const app = express();
+app.disable('x-powered-by');
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  maxHttpBufferSize: 1e4, // 10 Ko max par message
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/typ', express.static(path.join(__dirname, 'typ')));

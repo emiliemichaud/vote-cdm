@@ -8,6 +8,7 @@ let session = null;
 let counts = { pour: 0, contre: 0, abstention: 0 };
 let total = 0;
 let onlineCount = 0;
+let history = [];
 
 const DEFAULT_VOTE_SECONDS = 15;
 let countdownDeadline = null;
@@ -153,7 +154,7 @@ function render() {
 
   const dlBtn = document.getElementById("downloadPdfBtn");
   dlBtn.onclick = downloadPdf;
-  dlBtn.style.display = total > 0 ? "block" : "none";
+  dlBtn.style.display = (total > 0 || history.length > 0) ? "block" : "none";
   document.getElementById("closePanelBtn").onclick = () => {
     isDrawerOpen = false;
     document.getElementById("sidePanel").classList.remove("open");
@@ -288,16 +289,10 @@ function resetSessionForNewItem() {
   const newBtn = document.getElementById("newBtn");
   if (newBtn) newBtn.disabled = true;
 
-  if (total > 0 || session.status === "results") {
-    let history = JSON.parse(sessionStorage.getItem("history_" + code) || "[]");
-    history.push({ numero: history.length + 1, pour: counts.pour, contre: counts.contre, abstention: counts.abstention, total: total });
-    sessionStorage.setItem("history_" + code, JSON.stringify(history));
-  }
-
   socket.emit("new-item", { code, hostSecret }, (res) => {
+    if (newBtn) newBtn.disabled = false;
     if (!res.ok) {
       alert("Erreur : " + res.error);
-      if (newBtn) newBtn.disabled = false;
       return;
     }
   });
@@ -327,6 +322,9 @@ function attachSocketListeners() {
     if (payload.reset) {
       counts = { pour: 0, contre: 0, abstention: 0 };
       total = 0;
+      if (payload.history) {
+        history = payload.history;
+      }
     }
     render();
   });
@@ -369,6 +367,9 @@ function joinSession() {
     counts = res.counts;
     total = res.total;
     onlineCount = res.onlineCount || 0;
+    if (res.history) {
+      history = res.history;
+    }
 
     // Si le vote était en cours et qu'aucun minuteur local ne tourne
     // (ex : reprise après coupure réseau), on relance le minuteur sur le
@@ -463,7 +464,7 @@ async function downloadPdf() {
       hour: '2-digit', minute: '2-digit'
     });
 
-    const allResults = JSON.parse(sessionStorage.getItem("history_" + (session ? session.code : '')) || "[]");
+    const allResults = history.map(h => ({ ...h }));
     if (total > 0 || (session && session.status === "results")) {
       allResults.push({ numero: allResults.length + 1, pour: counts.pour, contre: counts.contre, abstention: counts.abstention, total: total });
     }

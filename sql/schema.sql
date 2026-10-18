@@ -22,5 +22,22 @@ CREATE TABLE IF NOT EXISTS votes (
 
 CREATE INDEX idx_votes_session ON votes(session_id);
 
+CREATE TABLE IF NOT EXISTS history (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  session_id   CHAR(36)     NOT NULL,
+  numero       INT          NOT NULL,
+  pour         INT          NOT NULL DEFAULT 0,
+  contre       INT          NOT NULL DEFAULT 0,
+  abstention   INT          NOT NULL DEFAULT 0,
+  total        INT          NOT NULL DEFAULT 0,
+  created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_history_session
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_history_session ON history(session_id);
+
 -- Si la table sessions existe déjà (déploiement précédent), ajouter la colonne :
 -- ALTER TABLE sessions ADD COLUMN voting_ends_at DATETIME NULL DEFAULT NULL;
+
