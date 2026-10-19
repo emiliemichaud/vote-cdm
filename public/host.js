@@ -421,10 +421,14 @@ function closeSessionPermanently() {
 }
 
 function resetSessionForNewItem() {
-  if (session && session.status !== "results" && total > 0) {
-    if (!confirm("Passer au vote suivant sans afficher les résultats ? Les votes actuels seront archivés dans le PDF.")) {
-      return;
-    }
+  const currentNum = history.length + 1;
+  const nextNum = currentNum + 1;
+  const msg = (session && session.status !== "results" && total > 0)
+    ? `Passer au vote suivant (Vote n°${nextNum}) sans afficher les résultats ?\n\nCe vote sera clôturé et archivé pour l'export PDF. Cette action est irréversible.`
+    : `Passer au vote suivant (Vote n°${nextNum}) ?\n\nLe résultat actuel sera archivé pour l'export PDF et les compteurs seront remis à zéro. Cette action est irréversible.`;
+
+  if (!confirm(msg)) {
+    return;
   }
   const newBtn = document.getElementById("newBtn");
   if (newBtn) newBtn.disabled = true;
