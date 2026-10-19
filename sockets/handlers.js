@@ -165,6 +165,7 @@ function registerHandlers(io, socket) {
       let counts = { pour: 0, contre: 0, abstention: 0 };
       let total = 0;
       if (session.status === 'results') ({ counts, total } = await getTally(session.id));
+      const history = await getHistory(session.id);
 
       io.to(hostRoom(session.code)).emit('presence-updated', { onlineCount: onlineVoters(io, session.code) });
 
@@ -174,6 +175,7 @@ function registerHandlers(io, socket) {
         hasVoted,
         counts,
         total,
+        itemNumber: history.length + 1,
         remainingSeconds: remainingSeconds(session),
       });
     } catch (err) {

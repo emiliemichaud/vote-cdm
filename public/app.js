@@ -4,8 +4,35 @@
 
 let _socket;
 function getSocket() {
-  if (!_socket) _socket = io();
+  if (!_socket) {
+    _socket = io();
+    setupConnectionMonitor(_socket);
+  }
   return _socket;
+}
+
+function setupConnectionMonitor(socket) {
+  let banner = null;
+  function getBanner() {
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.className = "connection-banner";
+      banner.textContent = "Connexion interrompue… reconnexion en cours";
+      document.body.appendChild(banner);
+    }
+    return banner;
+  }
+  socket.on("disconnect", (reason) => {
+    if (reason !== "io client disconnect") {
+      getBanner().classList.add("visible");
+    }
+  });
+  socket.on("connect", () => {
+    if (banner) banner.classList.remove("visible");
+  });
+  socket.on("connect_error", () => {
+    getBanner().classList.add("visible");
+  });
 }
 
 // Identifiant anonyme et persistant du votant, propre à ce navigateur

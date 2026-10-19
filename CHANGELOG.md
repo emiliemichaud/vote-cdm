@@ -7,6 +7,13 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-19
+
+### Added
+- masquage du décompte textuel des secondes au profit de la seule barre de progression
+- confirmation explicite obligatoire avant le passage au vote suivant
+- refonte ergonomique et améliorations UX du pilotage et du vote
+
 ## [1.1.1] - 2026-10-19
 
 ### Added
@@ -37,7 +44,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - Correction de l'affichage du dépouillement en mode présentation sans les compteurs de connexion.
 
-[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/emiliemichaud/vote-cdm/releases/tag/v1.0.0
