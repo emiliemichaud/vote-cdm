@@ -11,6 +11,7 @@ let onlineCount = 0;
 let history = [];
 
 const DEFAULT_VOTE_SECONDS = 15;
+const SHOW_TIMER_SECONDS = false; // Passer à true si souhaité pour réafficher le décompte chiffré en secondes
 let countdownDeadline = null;
 let countdownDuration = null;
 let countdownInterval = null;
@@ -218,8 +219,9 @@ function render() {
       const secs = Math.ceil(remainingMs / 1000);
       const pct = countdownDuration ? (remainingMs / countdownDuration) * 100 : 0;
       const warningClass = remainingMs <= 3000 ? "warning" : "";
+      const secondsHtml = SHOW_TIMER_SECONDS ? `<div id="timerSeconds" class="timer-seconds ${warningClass}">${secs}s</div>` : "";
       timerHtml = `
-        <div id="timerSeconds" class="timer-seconds ${warningClass}">${secs}s</div>
+        ${secondsHtml}
         <div class="timer-bar-track"><div id="timerBarFill" class="timer-bar-fill ${warningClass}" style="width: ${pct}%"></div></div>
       `;
     }
