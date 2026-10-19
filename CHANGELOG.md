@@ -7,6 +7,11 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-19
+
+### Added
+- ajout du script de release semi-automatique npm run release
+
 ## [1.1.0] - 2026-10-19
 
 ### Added
@@ -32,6 +37,7 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - Correction de l'affichage du dépouillement en mode présentation sans les compteurs de connexion.
 
-[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/emiliemichaud/vote-cdm/releases/tag/v1.0.0
