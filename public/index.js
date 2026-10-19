@@ -35,3 +35,5 @@ document.getElementById("joinBtn").addEventListener("click", () => {
 document.getElementById("joinCode").addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("joinBtn").click();
 });
+
+document.getElementById("joinCode")?.focus();

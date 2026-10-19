@@ -6,6 +6,7 @@ let session = null;
 let hasVoted = false;
 let counts = { pour: 0, contre: 0, abstention: 0 };
 let total = 0;
+let itemNumber = 1;
 let voting = false;
 const voterId = getVoterId();
 const DEFAULT_VOTE_SECONDS = 15;
@@ -26,10 +27,12 @@ function render() {
   }
 
   const isVotingMode = (session.status === "voting" || session.status === "prolonged");
+  const itemBadge = `<div class="eyebrow" style="margin-bottom:8px;">Vote n°${itemNumber}</div>`;
 
   if (isVotingMode && !hasVoted) {
     app.innerHTML = `
       <div class="card center">
+        ${itemBadge}
         <div class="status-banner voting">Vote en cours</div>
         ${timerMarkup()}
         <p class="hint">Choisissez une option. Vous ne pourrez voter qu'une seule fois.</p>
@@ -47,20 +50,24 @@ function render() {
   }
 
   if (hasVoted && session.status !== "results") {
-    app.innerHTML = `<div class="card center">${isVotingMode ? timerMarkup() : ""}<div class="locked-msg">✓ Votre vote a été enregistré.<br><span class="hint">${isVotingMode ? "En attente de la clôture du vote." : "Les votes sont clos."}</span></div></div>`;
+    app.innerHTML = `<div class="card center">${itemBadge}${isVotingMode ? timerMarkup() : ""}<div class="locked-msg"><svg class="lucide lucide-check" style="vertical-align: -3px; color: var(--pour); margin-right: 6px;" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Votre vote a été enregistré.<br><span class="hint">${isVotingMode ? "En attente de la clôture du vote." : "Les votes sont clos."}</span></div></div>`;
     return;
   }
 
   const banner = session.status === "stopped" ? `<div class="status-banner stopped">Vote clos</div>` : `<div class="status-banner">${statusLabel(session.status)}</div>`;
-  app.innerHTML = `<div class="card center">${banner}<p class="locked-msg" style="margin-top:0;">${session.status === "stopped" ? "Les votes sont clos." : "En attente du début du vote…"}</p></div>`;
+  app.innerHTML = `<div class="card center">${itemBadge}${banner}<p class="locked-msg" style="margin-top:0;">${session.status === "stopped" ? "Les votes sont clos." : "En attente du début du vote…"}</p></div>`;
 }
 
 function timerMarkup() {
   if (session.status === "prolonged") return `<div class="vote-timer-extended">Temps prolongé</div>`;
   const remainingMs = countdownDeadline ? Math.max(0, countdownDeadline - Date.now()) : 0;
+  const secs = Math.ceil(remainingMs / 1000);
   const pct = countdownDuration ? (remainingMs / countdownDuration) * 100 : 0;
   const warningClass = remainingMs <= 3000 ? "warning" : "";
-  return `<div class="timer-bar-track"><div id="timerBarFill" class="timer-bar-fill ${warningClass}" style="width: ${pct}%"></div></div>`;
+  return `
+    <div id="timerSeconds" class="timer-seconds ${warningClass}">${secs}s</div>
+    <div class="timer-bar-track"><div id="timerBarFill" class="timer-bar-fill ${warningClass}" style="width: ${pct}%"></div></div>
+  `;
 }
 
 function stopLocalTimer() {
@@ -76,10 +83,15 @@ function beginLocalTimer(seconds = DEFAULT_VOTE_SECONDS) {
   countdownInterval = setInterval(() => {
     const remainingMs = Math.max(0, countdownDeadline - Date.now());
     const timerBarFill = document.getElementById("timerBarFill");
+    const timerSeconds = document.getElementById("timerSeconds");
     if (timerBarFill) {
       const pct = (remainingMs / countdownDuration) * 100;
       timerBarFill.style.width = pct + "%";
-      if (remainingMs <= 3000) timerBarFill.classList.add("warning");
+      timerBarFill.classList.toggle("warning", remainingMs <= 3000);
+    }
+    if (timerSeconds) {
+      timerSeconds.textContent = Math.ceil(remainingMs / 1000) + "s";
+      timerSeconds.classList.toggle("warning", remainingMs <= 3000);
     }
     if (remainingMs <= 0) {
       clearInterval(countdownInterval);
@@ -98,36 +110,52 @@ function renderResults() {
 
   app.innerHTML = `
     <div class="card">
+      <div class="eyebrow center" style="display:block; margin-bottom:6px;">Vote n°${itemNumber}</div>
       <div class="verdict ${verdictClass}">${verdict}</div>
       <div class="turnout">${t} votant${t > 1 ? "s" : ""}</div>
       <div class="tally">
-        ${tallyRow("Pour", "pour", counts.pour, t)}
-        ${tallyRow("Contre", "contre", counts.contre, t)}
-        ${tallyRow("Abstention", "abst", counts.abstention, t)}
+        ${tallyRow("Pour", "pour", counts.pour, t, true)}
+        ${tallyRow("Contre", "contre", counts.contre, t, true)}
+        ${tallyRow("Abstention", "abst", counts.abstention, t, true)}
       </div>
     </div>
   `;
 }
 
-function tallyRow(label, cls, count, total) {
+function tallyRow(label, cls, count, total, showPct = false) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  const countText = (showPct && total > 0) ? `${count} <span style="font-size:15px; font-weight:normal; opacity:0.75;">(${pct}%)</span>` : `${count}`;
   return `
     <div class="label ${cls}">${label}</div>
-    <div class="count">${count}</div>
+    <div class="count">${countText}</div>
     <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
   `;
 }
 
 function castVote(choice) {
   if (voting) return;
+  if (navigator.vibrate) {
+    try { navigator.vibrate(40); } catch (_) {}
+  }
   voting = true;
-  app.querySelectorAll(".choice-btn").forEach((b) => (b.disabled = true));
+  app.querySelectorAll(".choice-btn").forEach((b) => {
+    b.disabled = true;
+    if (b.dataset.choice === choice) {
+      b.classList.add("selected");
+    } else {
+      b.style.opacity = "0.35";
+    }
+  });
 
   socket.emit("cast-vote", { code: session.code, voterId, choice }, (res) => {
     voting = false;
     if (!res.ok) {
       alert("Erreur : " + res.error);
-      app.querySelectorAll(".choice-btn").forEach((b) => (b.disabled = false));
+      app.querySelectorAll(".choice-btn").forEach((b) => {
+        b.disabled = false;
+        b.classList.remove("selected");
+        b.style.opacity = "";
+      });
       return;
     }
     hasVoted = true;
@@ -144,15 +172,14 @@ function attachSocketListeners() {
 
   socket.on("session-updated", (payload) => {
     if (!session) return;
-    const previousStatus = session.status;
     session.status = payload.status;
 
-    if (session.status === "voting" && previousStatus !== "voting") {
+    if (session.status === "voting") {
       beginLocalTimer(payload.seconds || DEFAULT_VOTE_SECONDS);
-    } else if (session.status === "prolonged" && previousStatus !== "prolonged") {
+    } else if (session.status === "prolonged") {
       stopLocalTimer();
       render();
-    } else if (session.status !== "voting" && session.status !== "prolonged") {
+    } else {
       stopLocalTimer();
     }
 
@@ -164,6 +191,7 @@ function attachSocketListeners() {
       hasVoted = false;
       counts = { pour: 0, contre: 0, abstention: 0 };
       total = 0;
+      if (payload.history) itemNumber = payload.history.length + 1;
       render();
     } else {
       render();
@@ -198,6 +226,7 @@ function joinSession() {
     hasVoted = res.hasVoted;
     counts = res.counts;
     total = res.total;
+    if (res.itemNumber) itemNumber = res.itemNumber;
 
     const expiryNote = document.getElementById("expiryNote");
     const expiry = formatExpiryDate(session);

@@ -23,106 +23,79 @@ function statusLabel(s) {
 
 let isQrModalOpen = false;
 let isDrawerOpen = false;
+let shellRenderedForCode = null;
 
-function render() {
-  if (!session) {
-    app.innerHTML = `<div class="card center hint">Chargement…</div>`;
-    return;
-  }
-  const url = voteUrlForCode(session.code);
-  const isVotingMode = (session.status === "voting" || session.status === "prolonged");
-  const bannerClass = isVotingMode ? "voting" : session.status === "stopped" ? "stopped" : "";
-
-  let timerHtml = "";
-  if (isVotingMode) {
-    if (session.status === "prolonged") {
-      timerHtml = `<div class="vote-timer-extended">Temps prolongé</div>`;
-    } else {
-      const remainingMs = countdownDeadline ? Math.max(0, countdownDeadline - Date.now()) : 0;
-      const pct = countdownDuration ? (remainingMs / countdownDuration) * 100 : 0;
-      const warningClass = remainingMs <= 3000 ? "warning" : "";
-      timerHtml = `<div class="timer-bar-track"><div id="timerBarFill" class="timer-bar-fill ${warningClass}" style="width: ${pct}%"></div></div>`;
-    }
-  }
-
-  let lowerContent = "";
-  if (session.status === "results") {
-    lowerContent = buildResultCard(counts, total, presentationMode, onlineCount);
-  } else {
-    const onlineHtml = !presentationMode ? `<div class="turnout" style="margin-bottom:8px;">${onlineCount} connexion${onlineCount > 1 ? "s" : ""} en ce moment</div>` : "";
-    lowerContent = `
-    <div class="card">
-      <div class="eyebrow center" style="display:block; margin-bottom:6px;">Dépouillement en direct</div>
-      ${onlineHtml}
-      <div class="tally">
-        ${tallyRow("Pour", "pour", counts.pour, total)}
-        ${tallyRow("Contre", "contre", counts.contre, total)}
-        ${tallyRow("Abstention", "abst", counts.abstention, total)}
-      </div>
-      <div class="turnout" style="margin-top:14px;">${total} vote${total > 1 ? "s" : ""} enregistré${total > 1 ? "s" : ""}</div>
-    </div>
+function buildActionButtons(status, totalVotes) {
+  if (status === "idle") {
+    return `
+      <button id="startBtn">Démarrer les votes (15s)</button>
+      <button id="extendBtn" class="secondary">Démarrer sans limite de temps</button>
     `;
   }
+  if (status === "voting") {
+    return `
+      <button id="stopBtn">Arrêter les votes</button>
+      <button id="startBtn" class="secondary">Prolonger le vote de 15 secondes</button>
+      <button id="extendBtn" class="secondary">Prolonger sans limite de temps</button>
+    `;
+  }
+  if (status === "prolonged") {
+    return `
+      <button id="stopBtn">Arrêter les votes</button>
+    `;
+  }
+  if (status === "stopped") {
+    return `
+      <button id="resultsBtn" ${totalVotes === 0 ? "disabled" : ""}>Afficher les résultats des votes</button>
+      <button id="startBtn" class="secondary">Prolonger le vote de 15 secondes</button>
+      <button id="extendBtn" class="secondary">Prolonger sans limite de temps</button>
+      <button id="newBtn" class="secondary">Nouveau vote (même session)</button>
+    `;
+  }
+  return `
+    <button id="newBtn">Nouveau vote (même session)</button>
+    <button id="startBtn" class="secondary">Prolonger le vote de 15 secondes</button>
+    <button id="extendBtn" class="secondary">Prolonger sans limite de temps</button>
+  `;
+}
 
-  const startBtnText = session.status === "idle" ? "Démarrer les votes" : "Prolonger le vote de 15 secondes";
-  const extendBtnDisabled = (session.status === "idle" || session.status === "prolonged") ? "disabled" : "";
+function ensureShell(url) {
+  if (shellRenderedForCode === session.code && document.getElementById("mainContent")) {
+    return;
+  }
+  shellRenderedForCode = session.code;
 
   app.innerHTML = `
-    <button class="panel-toggle-btn" id="openPanelBtn">☰ Infos Session</button>
+    <button class="panel-toggle-btn" id="openPanelBtn" title="Infos Session" aria-label="Infos Session">
+      <svg class="lucide lucide-menu" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+      <span class="panel-toggle-label">Infos Session</span>
+    </button>
 
     <div class="side-panel ${isDrawerOpen ? 'open' : ''}" id="sidePanel">
-      <button class="panel-close-btn" id="closePanelBtn">&times;</button>
+      <button class="panel-close-btn" id="closePanelBtn" aria-label="Fermer"><svg class="lucide lucide-x" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       <h3 style="margin-bottom: 16px; color: var(--navy-2); text-align: center;">Rejoindre</h3>
       <div class="code-display" style="padding: 0 0 10px 0;">${session.code}</div>
       <div class="qrcode-wrap" id="qrClickable" title="Agrandir le QR code" style="cursor: zoom-in;"><div id="qrcode"></div></div>
-      <div class="url-line">${url}</div>
+      <div class="url-copy-row" id="copyUrlBtn" title="Cliquer pour copier le lien" role="button" tabindex="0">
+        <span class="url-copy-text">${url}</span>
+        <span class="url-copy-action" id="copyIconWrap">
+          <svg class="lucide lucide-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        </span>
+      </div>
+      <div class="copy-badge" id="copyBadge">Copié !</div>
       <p class="hint">Les participants scannent ce QR code ou saisissent le code sur ${window.location.origin}</p>
     </div>
 
     <div class="layout-container">
-      <div class="main-content">
-        <div class="card center">
-          <div class="status-banner ${bannerClass}">${statusLabel(session.status)}</div>
-          ${timerHtml}
-          <p class="hint">Cette session expirera automatiquement le ${formatExpiryDate(session)}.</p>
-        </div>
-
-        <div class="card">
-          <div class="stack">
-            <button id="startBtn" ${isVotingMode ? "disabled" : ""}>${startBtnText}</button>
-            <button id="extendBtn" class="secondary" ${extendBtnDisabled}>Prolonger sans limite de temps</button>
-            <button id="stopBtn" ${isVotingMode ? "" : "disabled"}>Arrêter les votes</button>
-            <button id="resultsBtn" ${total === 0 ? "disabled" : ""}>Afficher les résultats des votes</button>
-            <button id="newBtn" class="secondary">Nouveau vote (même session)</button>
-          </div>
-        </div>
-
-        <div class="segmented-control" title="Basculer le mode d'affichage">
-          <input type="radio" id="mode-org" name="display-mode" value="org" ${!presentationMode ? "checked" : ""}>
-          <label for="mode-org">Organisateur</label>
-          <input type="radio" id="mode-pres" name="display-mode" value="pres" ${presentationMode ? "checked" : ""}>
-          <label for="mode-pres">Présentation</label>
-          <div class="segment-slider"></div>
-        </div>
-
-        ${lowerContent}
-
-        <div class="card">
-          <div class="stack">
-            <button id="downloadPdfBtn" class="secondary">Télécharger les résultats</button>
-            <button id="closeBtn" class="danger">Clôture de session</button>
-          </div>
-          <p class="hint" style="margin-top:10px;">Ferme définitivement cette session et supprime tous ses votes de la base de données. Action irréversible.</p>
-        </div>
-      </div>
+      <div class="main-content" id="mainContent"></div>
     </div>
 
     <div id="qrModal" class="modal-overlay" style="display: ${isQrModalOpen ? 'flex' : 'none'};">
       <div class="modal-content">
-        <span class="modal-close" id="qrModalClose">&times;</span>
+        <span class="modal-close" id="qrModalClose" title="Fermer"><svg class="lucide lucide-x" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>
         <div class="code-display" style="font-size: 54px; margin-bottom: 20px;">${session.code}</div>
         <div id="qrcode-large"></div>
-        <div class="url-line" style="font-size: 20px; margin-top: 20px;">${url}</div>
+        <div class="url-copy-text" style="font-size: 18px; margin-top: 20px;">${url}</div>
       </div>
     </div>
   `;
@@ -134,31 +107,69 @@ function render() {
     text: url, width: 400, height: 400, colorDark: "#1c2321", colorLight: "#ffffff",
   });
 
-  document.getElementById("startBtn").onclick = startVoting;
-  document.getElementById("extendBtn").onclick = prolongVoting;
-  document.getElementById("stopBtn").onclick = stopVoting;
-  document.getElementById("resultsBtn").onclick = showResults;
-  document.getElementById("newBtn").onclick = resetSessionForNewItem;
-  document.getElementById("closeBtn").onclick = closeSessionPermanently;
-  document.getElementsByName("display-mode").forEach(radio => {
-    radio.onchange = (event) => {
-      presentationMode = (event.target.value === "pres");
-      render();
+  const copyBtn = document.getElementById("copyUrlBtn");
+  const copyIconWrap = document.getElementById("copyIconWrap");
+  const copyBadge = document.getElementById("copyBadge");
+  const copyIconSvg = `<svg class="lucide lucide-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+  const checkIconSvg = `<svg class="lucide lucide-check" style="color:var(--pour);" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+  if (copyBtn) {
+    const triggerCopy = async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        const input = document.createElement("input");
+        input.value = url;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+      }
+      if (copyIconWrap) copyIconWrap.innerHTML = checkIconSvg;
+      if (copyBadge) copyBadge.classList.add("visible");
+      setTimeout(() => {
+        if (copyIconWrap) copyIconWrap.innerHTML = copyIconSvg;
+        if (copyBadge) copyBadge.classList.remove("visible");
+      }, 1800);
     };
-  });
+    copyBtn.onclick = triggerCopy;
+    copyBtn.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        triggerCopy();
+      }
+    };
+  }
 
   document.getElementById("openPanelBtn").onclick = () => {
     isDrawerOpen = true;
     document.getElementById("sidePanel").classList.add("open");
   };
-
-  const dlBtn = document.getElementById("downloadPdfBtn");
-  dlBtn.onclick = downloadPdf;
-  dlBtn.style.display = (total > 0 || history.length > 0) ? "block" : "none";
   document.getElementById("closePanelBtn").onclick = () => {
     isDrawerOpen = false;
     document.getElementById("sidePanel").classList.remove("open");
   };
+
+  document.addEventListener("click", (e) => {
+    if (!isDrawerOpen) return;
+    const panel = document.getElementById("sidePanel");
+    const openBtn = document.getElementById("openPanelBtn");
+    if (panel && !panel.contains(e.target) && openBtn && !openBtn.contains(e.target)) {
+      isDrawerOpen = false;
+      panel.classList.remove("open");
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (isQrModalOpen) {
+        isQrModalOpen = false;
+        const m = document.getElementById("qrModal");
+        if (m) m.style.display = "none";
+      }
+      closeDrawer();
+    }
+  });
 
   const qrModal = document.getElementById("qrModal");
   document.getElementById("qrClickable").onclick = () => {
@@ -177,6 +188,125 @@ function render() {
   };
 }
 
+function closeDrawer() {
+  if (isDrawerOpen) {
+    isDrawerOpen = false;
+    const panel = document.getElementById("sidePanel");
+    if (panel) panel.classList.remove("open");
+  }
+}
+
+function render() {
+  if (!session) {
+    shellRenderedForCode = null;
+    app.innerHTML = `<div class="card center hint">Chargement…</div>`;
+    return;
+  }
+  const url = voteUrlForCode(session.code);
+  ensureShell(url);
+
+  const isVotingMode = (session.status === "voting" || session.status === "prolonged");
+  const bannerClass = isVotingMode ? "voting" : session.status === "stopped" ? "stopped" : "";
+  const itemNumber = history.length + 1;
+
+  let timerHtml = "";
+  if (isVotingMode) {
+    if (session.status === "prolonged") {
+      timerHtml = `<div class="vote-timer-extended">Temps prolongé</div>`;
+    } else {
+      const remainingMs = countdownDeadline ? Math.max(0, countdownDeadline - Date.now()) : 0;
+      const secs = Math.ceil(remainingMs / 1000);
+      const pct = countdownDuration ? (remainingMs / countdownDuration) * 100 : 0;
+      const warningClass = remainingMs <= 3000 ? "warning" : "";
+      timerHtml = `
+        <div id="timerSeconds" class="timer-seconds ${warningClass}">${secs}s</div>
+        <div class="timer-bar-track"><div id="timerBarFill" class="timer-bar-fill ${warningClass}" style="width: ${pct}%"></div></div>
+      `;
+    }
+  }
+
+  let lowerContent = "";
+  if (session.status === "results") {
+    lowerContent = buildResultCard(counts, total, presentationMode, onlineCount);
+  } else if (presentationMode) {
+    lowerContent = `
+    <div class="card center">
+      <div class="eyebrow" style="margin-bottom:8px;">Participation</div>
+      <div class="turnout" style="font-size:18px; margin: 10px 0 6px;">${total} vote${total > 1 ? "s" : ""} enregistré${total > 1 ? "s" : ""}</div>
+    </div>
+    `;
+  } else {
+    const onlineHtml = `<div class="turnout" style="margin-bottom:8px;">${onlineCount} connexion${onlineCount > 1 ? "s" : ""} en ce moment</div>`;
+    lowerContent = `
+    <div class="card">
+      <div class="eyebrow center" style="display:block; margin-bottom:6px;">Dépouillement en direct</div>
+      ${onlineHtml}
+      <div class="tally">
+        ${tallyRow("Pour", "pour", counts.pour, total)}
+        ${tallyRow("Contre", "contre", counts.contre, total)}
+        ${tallyRow("Abstention", "abst", counts.abstention, total)}
+      </div>
+      <div class="turnout" style="margin-top:14px;">${total} vote${total > 1 ? "s" : ""} enregistré${total > 1 ? "s" : ""}</div>
+    </div>
+    `;
+  }
+
+  const mainContent = document.getElementById("mainContent");
+  mainContent.innerHTML = `
+    <div class="card center">
+      <div class="eyebrow" style="margin-bottom:8px;">Vote n°${itemNumber}</div>
+      <div class="status-banner ${bannerClass}">${statusLabel(session.status)}</div>
+      ${timerHtml}
+      <p class="hint">Cette session expirera automatiquement le ${formatExpiryDate(session)}.</p>
+    </div>
+
+    <div class="card">
+      <div class="stack">
+        ${buildActionButtons(session.status, total)}
+      </div>
+    </div>
+
+    <div class="segmented-control" title="Basculer le mode d'affichage">
+      <input type="radio" id="mode-org" name="display-mode" value="org" ${!presentationMode ? "checked" : ""}>
+      <label for="mode-org">Organisateur</label>
+      <input type="radio" id="mode-pres" name="display-mode" value="pres" ${presentationMode ? "checked" : ""}>
+      <label for="mode-pres">Présentation</label>
+      <div class="segment-slider"></div>
+    </div>
+
+    ${lowerContent}
+
+    <div class="card">
+      <div class="stack">
+        <button id="downloadPdfBtn" class="secondary">Télécharger les résultats</button>
+        <button id="closeBtn" class="danger">Clôture de session</button>
+      </div>
+      <p class="hint" style="margin-top:10px;">Ferme définitivement cette session et supprime tous ses votes de la base de données. Action irréversible.</p>
+    </div>
+  `;
+
+  const bindClick = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = fn;
+  };
+  bindClick("startBtn", startVoting);
+  bindClick("extendBtn", prolongVoting);
+  bindClick("stopBtn", stopVoting);
+  bindClick("resultsBtn", showResults);
+  bindClick("newBtn", resetSessionForNewItem);
+  bindClick("closeBtn", closeSessionPermanently);
+  document.getElementsByName("display-mode").forEach(radio => {
+    radio.onchange = (event) => {
+      presentationMode = (event.target.value === "pres");
+      render();
+    };
+  });
+
+  const dlBtn = document.getElementById("downloadPdfBtn");
+  dlBtn.onclick = downloadPdf;
+  dlBtn.style.display = (total > 0 || history.length > 0) ? "block" : "none";
+}
+
 function buildResultCard(counts, total, isPresentation, onlineCount) {
   let verdict = "Égalité";
   let verdictClass = "";
@@ -191,19 +321,20 @@ function buildResultCard(counts, total, isPresentation, onlineCount) {
       ${onlineHtml}
       <div class="turnout">${total} votant${total > 1 ? "s" : ""}</div>
       <div class="tally">
-        ${tallyRow("Pour", "pour", counts.pour, total)}
-        ${tallyRow("Contre", "contre", counts.contre, total)}
-        ${tallyRow("Abstention", "abst", counts.abstention, total)}
+        ${tallyRow("Pour", "pour", counts.pour, total, true)}
+        ${tallyRow("Contre", "contre", counts.contre, total, true)}
+        ${tallyRow("Abstention", "abst", counts.abstention, total, true)}
       </div>
     </div>
   `;
 }
 
-function tallyRow(label, cls, count, total) {
+function tallyRow(label, cls, count, total, showPct = false) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  const countText = (showPct && total > 0) ? `${count} <span style="font-size:15px; font-weight:normal; opacity:0.75;">(${pct}%)</span>` : `${count}`;
   return `
     <div class="label ${cls}">${label}</div>
-    <div class="count">${count}</div>
+    <div class="count">${countText}</div>
     <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
   `;
 }
@@ -223,10 +354,15 @@ function beginVoteTimer(seconds = DEFAULT_VOTE_SECONDS) {
   countdownInterval = setInterval(() => {
     const remainingMs = Math.max(0, countdownDeadline - Date.now());
     const timerBarFill = document.getElementById("timerBarFill");
+    const timerSeconds = document.getElementById("timerSeconds");
     if (timerBarFill) {
       const pct = (remainingMs / countdownDuration) * 100;
       timerBarFill.style.width = pct + "%";
-      if (remainingMs <= 3000) timerBarFill.classList.add("warning");
+      timerBarFill.classList.toggle("warning", remainingMs <= 3000);
+    }
+    if (timerSeconds) {
+      timerSeconds.textContent = Math.ceil(remainingMs / 1000) + "s";
+      timerSeconds.classList.toggle("warning", remainingMs <= 3000);
     }
     if (remainingMs <= 0 && session && session.status === "voting" && !autoStopInProgress) {
       autoStopInProgress = true;
@@ -238,6 +374,7 @@ function beginVoteTimer(seconds = DEFAULT_VOTE_SECONDS) {
 }
 
 function startVoting() {
+  closeDrawer();
   beginVoteTimer(DEFAULT_VOTE_SECONDS);
   socket.emit("start-voting", { code, hostSecret, seconds: DEFAULT_VOTE_SECONDS }, (res) => {
     if (!res.ok) { clearVoteTimer(); alert("Erreur : " + res.error); return; }
@@ -246,6 +383,7 @@ function startVoting() {
 
 function prolongVoting() {
   if (!session || session.status === "prolonged") return;
+  closeDrawer();
   socket.emit("prolong-voting", { code, hostSecret }, (res) => {
     if (!res.ok) alert("Erreur : " + res.error);
   });
@@ -283,8 +421,10 @@ function closeSessionPermanently() {
 }
 
 function resetSessionForNewItem() {
-  if (!confirm("Remettre les votes à zéro pour un nouvel objet, dans cette même session ? Les votes actuels seront définitivement supprimés.")) {
-    return;
+  if (session && session.status !== "results" && total > 0) {
+    if (!confirm("Passer au vote suivant sans afficher les résultats ? Les votes actuels seront archivés dans le PDF.")) {
+      return;
+    }
   }
   const newBtn = document.getElementById("newBtn");
   if (newBtn) newBtn.disabled = true;
@@ -307,12 +447,11 @@ function attachSocketListeners() {
 
   socket.on("session-updated", (payload) => {
     if (!session) return;
-    const previousStatus = session.status;
     session.status = payload.status;
 
-    if (payload.status === "voting" && previousStatus !== "voting") {
+    if (payload.status === "voting") {
       beginVoteTimer(payload.seconds || DEFAULT_VOTE_SECONDS);
-    } else if (payload.status !== "voting") {
+    } else {
       clearVoteTimer();
     }
     if (payload.status === "results" && payload.counts) {
@@ -362,6 +501,7 @@ function joinSession() {
       }
       return;
     }
+    const isFirstLoad = !session;
     const wasVoting = session && (session.status === "voting" || session.status === "prolonged");
     session = res.session;
     counts = res.counts;
@@ -369,6 +509,9 @@ function joinSession() {
     onlineCount = res.onlineCount || 0;
     if (res.history) {
       history = res.history;
+    }
+    if (isFirstLoad && session.status === "idle" && total === 0 && history.length === 0) {
+      isDrawerOpen = true;
     }
 
     // Si le vote était en cours et qu'aucun minuteur local ne tourne
