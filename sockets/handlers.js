@@ -12,8 +12,24 @@ const tallyTimers = new Map();
 const TALLY_PUSH_INTERVAL_MS = 200;
 
 async function getSessionByCode(code) {
+  if (!code || typeof code !== 'string') return null;
   const rows = await pool.query('SELECT * FROM sessions WHERE code = ?', [code]);
   return rows[0] || null;
+}
+
+function toPublicSession(session) {
+  if (!session) return null;
+  return {
+    id: session.id,
+    code: session.code,
+    status: session.status,
+    created_at: session.created_at,
+    voting_ends_at: session.voting_ends_at,
+  };
+}
+
+function isValidVoterId(voterId) {
+  return typeof voterId === 'string' && voterId.length >= 8 && voterId.length <= 64;
 }
 
 // Agrégation faite en SQL plutôt qu'en JS 
@@ -26,6 +42,20 @@ async function getTally(sessionId) {
   for (const row of rows) counts[row.choice] = Number(row.count);
   const total = counts.pour + counts.contre + counts.abstention;
   return { counts, total };
+}
+
+async function getHistory(sessionId) {
+  const rows = await pool.query(
+    `SELECT numero, pour, contre, abstention, total FROM history WHERE session_id = ? ORDER BY numero ASC`,
+    [sessionId]
+  );
+  return rows.map((r) => ({
+    numero: Number(r.numero),
+    pour: Number(r.pour),
+    contre: Number(r.contre),
+    abstention: Number(r.abstention),
+    total: Number(r.total),
+  }));
 }
 
 function onlineVoters(io, code) {
@@ -87,7 +117,7 @@ function registerHandlers(io, socket) {
 
   // --- L'organisateur rejoint le dashboard d'une session ---
   // Appelé aussi bien à la connexion initiale qu'à chaque reconnexion socket.
-  socket.on('join-as-host', async ({ code, hostSecret }, ack) => {
+  socket.on('join-as-host', async ({ code, hostSecret } = {}, ack) => {
     try {
       const session = await getSessionByCode(code);
       if (!session || session.host_secret !== hostSecret) {
@@ -97,11 +127,13 @@ function registerHandlers(io, socket) {
       socket.join(hostRoom(code));
       socket.data.code = code;
       const { counts, total } = await getTally(session.id);
+      const history = await getHistory(session.id);
       ack?.({
         ok: true,
-        session,
+        session: toPublicSession(session),
         counts,
         total,
+        history,
         onlineCount: onlineVoters(io, code),
         remainingSeconds: remainingSeconds(session),
       });
@@ -112,8 +144,11 @@ function registerHandlers(io, socket) {
   });
 
   // --- Un participant rejoint le bulletin de vote ---
-  socket.on('join-as-voter', async ({ code, voterId }, ack) => {
+  socket.on('join-as-voter', async ({ code, voterId } = {}, ack) => {
     try {
+      if (!isValidVoterId(voterId)) {
+        return ack?.({ ok: false, error: 'Identifiant votant invalide' });
+      }
       const session = await getSessionByCode((code || '').toUpperCase());
       if (!session) return ack?.({ ok: false, error: 'Session introuvable' });
 
@@ -135,7 +170,7 @@ function registerHandlers(io, socket) {
 
       ack?.({
         ok: true,
-        session,
+        session: toPublicSession(session),
         hasVoted,
         counts,
         total,
@@ -148,8 +183,11 @@ function registerHandlers(io, socket) {
   });
 
   // --- Un participant vote ---
-  socket.on('cast-vote', async ({ code, voterId, choice }, ack) => {
+  socket.on('cast-vote', async ({ code, voterId, choice } = {}, ack) => {
     try {
+      if (!isValidVoterId(voterId)) {
+        return ack?.({ ok: false, error: 'Identifiant votant invalide' });
+      }
       if (!['pour', 'contre', 'abstention'].includes(choice)) {
         return ack?.({ ok: false, error: 'Choix invalide' });
       }
@@ -182,6 +220,9 @@ function registerHandlers(io, socket) {
 
   // --- Actions de l'organisateur ---
   async function withHost(code, hostSecret, ack, fn) {
+    if (!code || !hostSecret) {
+      return ack?.({ ok: false, error: 'Non autorisé' });
+    }
     const session = await getSessionByCode(code);
     if (!session || session.host_secret !== hostSecret) {
       return ack?.({ ok: false, error: 'Non autorisé' });
@@ -189,7 +230,7 @@ function registerHandlers(io, socket) {
     return fn(session);
   }
 
-  socket.on('start-voting', ({ code, hostSecret, seconds }, ack) =>
+  socket.on('start-voting', ({ code, hostSecret, seconds } = {}, ack) =>
     withHost(code, hostSecret, ack, async (session) => {
       const secondsVal = seconds || 15;
       const endsAt = new Date(Date.now() + secondsVal * 1000);
@@ -202,7 +243,7 @@ function registerHandlers(io, socket) {
     })
   );
 
-  socket.on('prolong-voting', ({ code, hostSecret }, ack) =>
+  socket.on('prolong-voting', ({ code, hostSecret } = {}, ack) =>
     withHost(code, hostSecret, ack, async (session) => {
       await pool.query(
         `UPDATE sessions SET status = 'prolonged', voting_ends_at = NULL WHERE id = ?`,
@@ -213,7 +254,7 @@ function registerHandlers(io, socket) {
     })
   );
 
-  socket.on('stop-voting', ({ code, hostSecret }, ack) =>
+  socket.on('stop-voting', ({ code, hostSecret } = {}, ack) =>
     withHost(code, hostSecret, ack, async (session) => {
       await pool.query(
         `UPDATE sessions SET status = 'stopped', voting_ends_at = NULL WHERE id = ?`,
@@ -224,7 +265,7 @@ function registerHandlers(io, socket) {
     })
   );
 
-  socket.on('show-results', ({ code, hostSecret }, ack) =>
+  socket.on('show-results', ({ code, hostSecret } = {}, ack) =>
     withHost(code, hostSecret, ack, async (session) => {
       await pool.query(`UPDATE sessions SET status = 'results' WHERE id = ?`, [session.id]);
       const { counts, total } = await getTally(session.id);
@@ -233,20 +274,33 @@ function registerHandlers(io, socket) {
     })
   );
 
-  socket.on('new-item', ({ code, hostSecret }, ack) =>
+  socket.on('new-item', ({ code, hostSecret } = {}, ack) =>
     withHost(code, hostSecret, ack, async (session) => {
       cancelTallyUpdate(code);
+      const { counts, total } = await getTally(session.id);
+      if (total > 0 || session.status === 'results') {
+        const rows = await pool.query(
+          `SELECT COALESCE(MAX(numero), 0) + 1 AS nextNum FROM history WHERE session_id = ?`,
+          [session.id]
+        );
+        const nextNum = Number(rows[0]?.nextNum || 1);
+        await pool.query(
+          `INSERT INTO history (session_id, numero, pour, contre, abstention, total) VALUES (?, ?, ?, ?, ?, ?)`,
+          [session.id, nextNum, counts.pour, counts.contre, counts.abstention, total]
+        );
+      }
       await pool.query('DELETE FROM votes WHERE session_id = ?', [session.id]);
       await pool.query(
         `UPDATE sessions SET status = 'idle', voting_ends_at = NULL WHERE id = ?`,
         [session.id]
       );
-      io.to(room(code)).emit('session-updated', { status: 'idle', reset: true });
+      const history = await getHistory(session.id);
+      io.to(room(code)).emit('session-updated', { status: 'idle', reset: true, history });
       ack?.({ ok: true });
     })
   );
 
-  socket.on('close-session', ({ code, hostSecret }, ack) =>
+  socket.on('close-session', ({ code, hostSecret } = {}, ack) =>
     withHost(code, hostSecret, ack, async (session) => {
       cancelTallyUpdate(code);
       await pool.query('DELETE FROM votes WHERE session_id = ?', [session.id]);
@@ -264,11 +318,11 @@ function registerHandlers(io, socket) {
   });
 }
 
-// Sessions supprimées automatiquement 15h après leur création 
+// Sessions supprimées automatiquement 48h après leur création 
 async function cleanupExpiredSessions(io) {
   try {
     const expired = await pool.query(
-      `SELECT id, code FROM sessions WHERE created_at < (NOW() - INTERVAL 15 HOUR)`
+      `SELECT id, code FROM sessions WHERE created_at < (NOW() - INTERVAL 48 HOUR)`
     );
     for (const s of expired) {
       await pool.query('DELETE FROM sessions WHERE id = ?', [s.id]);
