@@ -193,7 +193,11 @@ function attachSocketListeners() {
       hasVoted = false;
       counts = { pour: 0, contre: 0, abstention: 0 };
       total = 0;
-      if (payload.history) itemNumber = payload.history.length + 1;
+      if (payload.itemNumber) {
+        itemNumber = payload.itemNumber;
+      } else if (payload.history) {
+        itemNumber = payload.history.length + 1;
+      }
       render();
     } else {
       render();
@@ -217,9 +221,15 @@ function joinSession() {
     return;
   }
   socket.emit("join-as-voter", { code, voterId }, (res) => {
-    if (!res.ok) {
+    if (!res || !res.ok) {
       if (!session) {
-        app.innerHTML = `<div class="card center hint">Session introuvable. Vérifiez le code : <strong>${code}</strong></div>`;
+        const card = document.createElement("div");
+        card.className = "card center hint";
+        card.append("Session introuvable. Vérifiez le code : ");
+        const strong = document.createElement("strong");
+        strong.textContent = code || "";
+        card.appendChild(strong);
+        app.replaceChildren(card);
       }
       return;
     }

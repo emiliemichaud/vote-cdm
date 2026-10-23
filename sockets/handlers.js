@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { customAlphabet } = require('nanoid');
 const pool = require('../db');
@@ -11,9 +12,22 @@ const hostRoom = (code) => `host:${code}`;
 const tallyTimers = new Map();
 const TALLY_PUSH_INTERVAL_MS = 200;
 
+function isValidHostSecret(expected, provided) {
+  if (typeof expected !== 'string' || typeof provided !== 'string') return false;
+  const bufA = Buffer.from(expected);
+  const bufB = Buffer.from(provided);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 async function getSessionByCode(code) {
   if (!code || typeof code !== 'string') return null;
-  const rows = await pool.query('SELECT * FROM sessions WHERE code = ?', [code]);
+  const clean = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,10}$/.test(clean)) return null;
+  const rows = await pool.query(
+    'SELECT * FROM sessions WHERE code = ? AND created_at >= (NOW() - INTERVAL 48 HOUR)',
+    [clean]
+  );
   return rows[0] || null;
 }
 
@@ -32,7 +46,11 @@ function isValidVoterId(voterId) {
   return typeof voterId === 'string' && voterId.length >= 8 && voterId.length <= 64;
 }
 
-// Agrégation faite en SQL plutôt qu'en JS 
+function toSafeAck(ack) {
+  return typeof ack === 'function' ? ack : () => {};
+}
+
+// Agrégation faite en SQL plutôt qu'en JS
 async function getTally(sessionId) {
   const rows = await pool.query(
     `SELECT choice, COUNT(*) AS count FROM votes WHERE session_id = ? GROUP BY choice`,
@@ -85,17 +103,34 @@ function cancelTallyUpdate(code) {
   tallyTimers.delete(code);
 }
 
-// Temps restant réel avant la fin du vote, calculé depuis voting_ends_at
-// (stocké en base) 
+// Temps restant réel avant la fin du vote, calculé depuis voting_ends_at (stocké en base)
 function remainingSeconds(session) {
   if (session.status !== 'voting' || !session.voting_ends_at) return null;
   const ms = new Date(session.voting_ends_at).getTime() - Date.now();
   return Math.max(0, Math.round(ms / 1000));
 }
 
+function switchSocketRooms(io, socket, newCode, isHost) {
+  const oldCode = socket.data.code;
+  if (oldCode && oldCode !== newCode) {
+    socket.leave(room(oldCode));
+    socket.leave(votersRoom(oldCode));
+    socket.leave(hostRoom(oldCode));
+    io.to(hostRoom(oldCode)).emit('presence-updated', { onlineCount: onlineVoters(io, oldCode) });
+  }
+  socket.join(room(newCode));
+  if (isHost) {
+    socket.join(hostRoom(newCode));
+  } else {
+    socket.join(votersRoom(newCode));
+  }
+  socket.data.code = newCode;
+}
+
 function registerHandlers(io, socket) {
   // --- Création de session ---
   socket.on('create-session', async (_payload, ack) => {
+    const sendAck = toSafeAck(ack);
     try {
       const id = uuidv4();
       const hostSecret = uuidv4();
@@ -108,53 +143,59 @@ function registerHandlers(io, socket) {
         `INSERT INTO sessions (id, code, status, host_secret) VALUES (?, ?, 'idle', ?)`,
         [id, code, hostSecret]
       );
-      ack?.({ ok: true, code, hostSecret });
+      sendAck({ ok: true, code, hostSecret });
     } catch (err) {
       console.error('create-session', err);
-      ack?.({ ok: false, error: 'Erreur lors de la création de la session' });
+      sendAck({ ok: false, error: 'Erreur lors de la création de la session' });
     }
   });
 
   // --- L'organisateur rejoint le dashboard d'une session ---
-  // Appelé aussi bien à la connexion initiale qu'à chaque reconnexion socket.
-  socket.on('join-as-host', async ({ code, hostSecret } = {}, ack) => {
+  socket.on('join-as-host', async (payload, ack) => {
+    const sendAck = toSafeAck(ack);
     try {
+      const data = (payload && typeof payload === 'object') ? payload : {};
+      const { code, hostSecret } = data;
       const session = await getSessionByCode(code);
-      if (!session || session.host_secret !== hostSecret) {
-        return ack?.({ ok: false, error: 'Lien invalide ou expiré' });
+      if (!session || !isValidHostSecret(session.host_secret, hostSecret)) {
+        return sendAck({ ok: false, error: 'Lien invalide ou expiré' });
       }
-      socket.join(room(code));
-      socket.join(hostRoom(code));
-      socket.data.code = code;
+      switchSocketRooms(io, socket, session.code, true);
       const { counts, total } = await getTally(session.id);
       const history = await getHistory(session.id);
-      ack?.({
+      sendAck({
         ok: true,
         session: toPublicSession(session),
         counts,
         total,
         history,
-        onlineCount: onlineVoters(io, code),
+        onlineCount: onlineVoters(io, session.code),
         remainingSeconds: remainingSeconds(session),
       });
     } catch (err) {
       console.error('join-as-host', err);
-      ack?.({ ok: false, error: 'Erreur serveur' });
+      sendAck({ ok: false, error: 'Erreur serveur' });
     }
   });
 
   // --- Un participant rejoint le bulletin de vote ---
-  socket.on('join-as-voter', async ({ code, voterId } = {}, ack) => {
+  socket.on('join-as-voter', async (payload, ack) => {
+    const sendAck = toSafeAck(ack);
     try {
+      const data = (payload && typeof payload === 'object') ? payload : {};
+      const { code, voterId } = data;
       if (!isValidVoterId(voterId)) {
-        return ack?.({ ok: false, error: 'Identifiant votant invalide' });
+        return sendAck({ ok: false, error: 'Identifiant votant invalide' });
       }
-      const session = await getSessionByCode((code || '').toUpperCase());
-      if (!session) return ack?.({ ok: false, error: 'Session introuvable' });
+      if (socket.data.voterId && socket.data.voterId !== voterId) {
+        return sendAck({ ok: false, error: 'Identifiant votant incohérent pour cette connexion' });
+      }
 
-      socket.join(room(session.code));
-      socket.join(votersRoom(session.code));
-      socket.data.code = session.code;
+      const session = await getSessionByCode(code);
+      if (!session) return sendAck({ ok: false, error: 'Session introuvable' });
+
+      switchSocketRooms(io, socket, session.code, false);
+      socket.data.voterId = voterId;
 
       const existing = await pool.query(
         'SELECT id FROM votes WHERE session_id = ? AND voter_id = ?',
@@ -165,38 +206,56 @@ function registerHandlers(io, socket) {
       let counts = { pour: 0, contre: 0, abstention: 0 };
       let total = 0;
       if (session.status === 'results') ({ counts, total } = await getTally(session.id));
-      const history = await getHistory(session.id);
+
+      const countRows = await pool.query(
+        'SELECT COUNT(*) AS count FROM history WHERE session_id = ?',
+        [session.id]
+      );
+      const itemNumber = Number(countRows[0]?.count || 0) + 1;
 
       io.to(hostRoom(session.code)).emit('presence-updated', { onlineCount: onlineVoters(io, session.code) });
 
-      ack?.({
+      sendAck({
         ok: true,
         session: toPublicSession(session),
         hasVoted,
         counts,
         total,
-        itemNumber: history.length + 1,
+        itemNumber,
         remainingSeconds: remainingSeconds(session),
       });
     } catch (err) {
       console.error('join-as-voter', err);
-      ack?.({ ok: false, error: 'Erreur serveur' });
+      sendAck({ ok: false, error: 'Erreur serveur' });
     }
   });
 
   // --- Un participant vote ---
-  socket.on('cast-vote', async ({ code, voterId, choice } = {}, ack) => {
+  socket.on('cast-vote', async (payload, ack) => {
+    const sendAck = toSafeAck(ack);
     try {
+      const data = (payload && typeof payload === 'object') ? payload : {};
+      const { code, voterId, choice } = data;
       if (!isValidVoterId(voterId)) {
-        return ack?.({ ok: false, error: 'Identifiant votant invalide' });
+        return sendAck({ ok: false, error: 'Identifiant votant invalide' });
+      }
+      if (socket.data.voterId && socket.data.voterId !== voterId) {
+        return sendAck({ ok: false, error: 'Connexion de vote non autorisée pour cet identifiant' });
       }
       if (!['pour', 'contre', 'abstention'].includes(choice)) {
-        return ack?.({ ok: false, error: 'Choix invalide' });
+        return sendAck({ ok: false, error: 'Choix invalide' });
       }
       const session = await getSessionByCode(code);
-      if (!session) return ack?.({ ok: false, error: 'Session introuvable' });
+      if (!session) return sendAck({ ok: false, error: 'Session introuvable' });
       if (!['voting', 'prolonged'].includes(session.status)) {
-        return ack?.({ ok: false, error: "Le vote n'est pas ouvert" });
+        return sendAck({ ok: false, error: "Le vote n'est pas ouvert" });
+      }
+      if (session.status === 'voting' && session.voting_ends_at) {
+        const deadlineMs = new Date(session.voting_ends_at).getTime();
+        // Tolérance de 1,5s pour la latence réseau
+        if (Date.now() > deadlineMs + 1500) {
+          return sendAck({ ok: false, error: 'Le temps imparti pour ce vote est écoulé' });
+        }
       }
 
       try {
@@ -206,79 +265,90 @@ function registerHandlers(io, socket) {
         );
       } catch (err) {
         if (err.code === 'ER_DUP_ENTRY') {
-          return ack?.({ ok: true, alreadyVoted: true });
+          return sendAck({ ok: true, alreadyVoted: true });
         }
         throw err;
       }
 
       scheduleTallyUpdate(io, session.code, session.id);
 
-      ack?.({ ok: true, alreadyVoted: false });
+      sendAck({ ok: true, alreadyVoted: false });
     } catch (err) {
       console.error('cast-vote', err);
-      ack?.({ ok: false, error: "Impossible d'enregistrer le vote" });
+      sendAck({ ok: false, error: "Impossible d'enregistrer le vote" });
     }
   });
 
   // --- Actions de l'organisateur ---
   async function withHost(code, hostSecret, ack, fn) {
-    if (!code || !hostSecret) {
-      return ack?.({ ok: false, error: 'Non autorisé' });
+    const sendAck = toSafeAck(ack);
+    try {
+      if (!code || !hostSecret) {
+        return sendAck({ ok: false, error: 'Non autorisé' });
+      }
+      const session = await getSessionByCode(code);
+      if (!session || !isValidHostSecret(session.host_secret, hostSecret)) {
+        return sendAck({ ok: false, error: 'Non autorisé' });
+      }
+      return await fn(session, sendAck);
+    } catch (err) {
+      console.error('withHost', err);
+      return sendAck({ ok: false, error: 'Erreur serveur' });
     }
-    const session = await getSessionByCode(code);
-    if (!session || session.host_secret !== hostSecret) {
-      return ack?.({ ok: false, error: 'Non autorisé' });
-    }
-    return fn(session);
   }
 
-  socket.on('start-voting', ({ code, hostSecret, seconds } = {}, ack) =>
-    withHost(code, hostSecret, ack, async (session) => {
-      const secondsVal = seconds || 15;
+  socket.on('start-voting', (payload, ack) => {
+    const data = (payload && typeof payload === 'object') ? payload : {};
+    return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
+      const secondsVal = Number(data.seconds) > 0 ? Number(data.seconds) : 15;
       const endsAt = new Date(Date.now() + secondsVal * 1000);
       await pool.query(
         `UPDATE sessions SET status = 'voting', voting_ends_at = ? WHERE id = ?`,
         [endsAt, session.id]
       );
-      io.to(room(code)).emit('session-updated', { status: 'voting', seconds: secondsVal });
-      ack?.({ ok: true });
-    })
-  );
+      io.to(room(session.code)).emit('session-updated', { status: 'voting', seconds: secondsVal });
+      sendAck({ ok: true });
+    });
+  });
 
-  socket.on('prolong-voting', ({ code, hostSecret } = {}, ack) =>
-    withHost(code, hostSecret, ack, async (session) => {
+  socket.on('prolong-voting', (payload, ack) => {
+    const data = (payload && typeof payload === 'object') ? payload : {};
+    return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
       await pool.query(
         `UPDATE sessions SET status = 'prolonged', voting_ends_at = NULL WHERE id = ?`,
         [session.id]
       );
-      io.to(room(code)).emit('session-updated', { status: 'prolonged' });
-      ack?.({ ok: true });
-    })
-  );
+      io.to(room(session.code)).emit('session-updated', { status: 'prolonged' });
+      sendAck({ ok: true });
+    });
+  });
 
-  socket.on('stop-voting', ({ code, hostSecret } = {}, ack) =>
-    withHost(code, hostSecret, ack, async (session) => {
+  socket.on('stop-voting', (payload, ack) => {
+    const data = (payload && typeof payload === 'object') ? payload : {};
+    return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
       await pool.query(
         `UPDATE sessions SET status = 'stopped', voting_ends_at = NULL WHERE id = ?`,
         [session.id]
       );
-      io.to(room(code)).emit('session-updated', { status: 'stopped' });
-      ack?.({ ok: true });
-    })
-  );
+      io.to(room(session.code)).emit('session-updated', { status: 'stopped' });
+      sendAck({ ok: true });
+    });
+  });
 
-  socket.on('show-results', ({ code, hostSecret } = {}, ack) =>
-    withHost(code, hostSecret, ack, async (session) => {
+  socket.on('show-results', (payload, ack) => {
+    const data = (payload && typeof payload === 'object') ? payload : {};
+    return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
       await pool.query(`UPDATE sessions SET status = 'results' WHERE id = ?`, [session.id]);
       const { counts, total } = await getTally(session.id);
-      io.to(room(code)).emit('session-updated', { status: 'results', counts, total });
-      ack?.({ ok: true });
-    })
-  );
+      io.to(room(session.code)).emit('session-updated', { status: 'results', counts, total });
+      sendAck({ ok: true });
+    });
+  });
 
-  socket.on('new-item', ({ code, hostSecret } = {}, ack) =>
-    withHost(code, hostSecret, ack, async (session) => {
-      cancelTallyUpdate(code);
+  socket.on('new-item', (payload, ack) => {
+    const data = (payload && typeof payload === 'object') ? payload : {};
+    return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
+      cancelTallyUpdate(session.code);
       const { counts, total } = await getTally(session.id);
       if (total > 0 || session.status === 'results') {
         const rows = await pool.query(
@@ -297,20 +367,28 @@ function registerHandlers(io, socket) {
         [session.id]
       );
       const history = await getHistory(session.id);
-      io.to(room(code)).emit('session-updated', { status: 'idle', reset: true, history });
-      ack?.({ ok: true });
-    })
-  );
+      // L'hôte reçoit l'historique complet pour son affichage et l'export PDF
+      io.to(hostRoom(session.code)).emit('session-updated', { status: 'idle', reset: true, history });
+      // Les votants reçoivent uniquement le nouveau numéro de vote sans divulgation des résultats passés non publiés
+      io.to(votersRoom(session.code)).emit('session-updated', {
+        status: 'idle',
+        reset: true,
+        itemNumber: history.length + 1,
+      });
+      sendAck({ ok: true });
+    });
+  });
 
-  socket.on('close-session', ({ code, hostSecret } = {}, ack) =>
-    withHost(code, hostSecret, ack, async (session) => {
-      cancelTallyUpdate(code);
+  socket.on('close-session', (payload, ack) => {
+    const data = (payload && typeof payload === 'object') ? payload : {};
+    return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
+      cancelTallyUpdate(session.code);
       await pool.query('DELETE FROM votes WHERE session_id = ?', [session.id]);
       await pool.query('DELETE FROM sessions WHERE id = ?', [session.id]);
-      io.to(room(code)).emit('session-closed', { reason: 'closed' });
-      ack?.({ ok: true });
-    })
-  );
+      io.to(room(session.code)).emit('session-closed', { reason: 'closed' });
+      sendAck({ ok: true });
+    });
+  });
 
   socket.on('disconnect', () => {
     const code = socket.data.code;
@@ -320,13 +398,14 @@ function registerHandlers(io, socket) {
   });
 }
 
-// Sessions supprimées automatiquement 48h après leur création 
+// Sessions supprimées automatiquement 48h après leur création
 async function cleanupExpiredSessions(io) {
   try {
     const expired = await pool.query(
       `SELECT id, code FROM sessions WHERE created_at < (NOW() - INTERVAL 48 HOUR)`
     );
     for (const s of expired) {
+      cancelTallyUpdate(s.code);
       await pool.query('DELETE FROM sessions WHERE id = ?', [s.id]);
       io.to(room(s.code)).emit('session-closed', { reason: 'expired' });
     }

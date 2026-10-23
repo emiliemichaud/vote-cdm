@@ -8,7 +8,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const readline = require('node:readline/promises');
 const { stdin: input, stdout: output } = require('node:process');
 
@@ -16,13 +16,27 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const PACKAGE_PATH = path.join(ROOT_DIR, 'package.json');
 const CHANGELOG_PATH = path.join(ROOT_DIR, 'CHANGELOG.md');
 
-function run(cmd, options = {}) {
-  return execSync(cmd, { cwd: ROOT_DIR, encoding: 'utf8', stdio: options.silent ? 'pipe' : 'pipe', ...options }).trim();
+function runGit(args, options = {}) {
+  return execFileSync('git', args, {
+    cwd: ROOT_DIR,
+    encoding: 'utf8',
+    stdio: options.silent ? 'pipe' : 'pipe',
+    ...options,
+  }).trim();
+}
+
+function runNpm(args, options = {}) {
+  return execFileSync('npm', args, {
+    cwd: ROOT_DIR,
+    encoding: 'utf8',
+    stdio: options.silent ? 'pipe' : 'pipe',
+    ...options,
+  }).trim();
 }
 
 function getRepoUrl() {
   try {
-    const remote = run('git remote get-url origin', { silent: true });
+    const remote = runGit(['remote', 'get-url', 'origin'], { silent: true });
     if (remote.startsWith('git@github.com:')) {
       return `https://github.com/${remote.replace('git@github.com:', '').replace(/\.git$/, '')}`;
     }
@@ -82,7 +96,7 @@ async function main() {
 
   // 1. Vérification de Git
   try {
-    const status = run('git status --porcelain', { silent: true });
+    const status = runGit(['status', '--porcelain'], { silent: true });
     const trackedChanges = status
       .split('\n')
       .map((l) => l.trim())
@@ -99,7 +113,7 @@ async function main() {
     process.exit(1);
   }
 
-  const currentBranch = run('git rev-parse --abbrev-ref HEAD', { silent: true });
+  const currentBranch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], { silent: true });
   console.log(`🌿 Branche courante : ${currentBranch}`);
 
   // 2. Détermination de la version actuelle et du dernier tag
@@ -109,7 +123,7 @@ async function main() {
 
   let lastTag = null;
   try {
-    lastTag = run('git describe --tags --abbrev=0', { silent: true });
+    lastTag = runGit(['describe', '--tags', '--abbrev=0'], { silent: true });
   } catch {
     lastTag = `v${currentVersion}`;
   }
@@ -119,7 +133,7 @@ async function main() {
   // 3. Analyse des commits récents
   let commits = [];
   try {
-    const rawCommits = run(`git log ${lastTag}..HEAD --oneline`, { silent: true });
+    const rawCommits = runGit(['log', `${lastTag}..HEAD`, '--oneline'], { silent: true });
     commits = rawCommits ? rawCommits.split('\n').filter(Boolean) : [];
   } catch {
     commits = [];
@@ -210,8 +224,11 @@ async function main() {
   }
 
   // Remplacement de Unreleased
-  const replacement = `## [Unreleased]\n\n## [${newVersion}] - ${today}${newReleaseSection}\n$2`;
-  let updatedChangelog = changelogContent.replace(unreleasedRegex, replacement);
+  let updatedChangelog = changelogContent.replace(
+    unreleasedRegex,
+    (_match, _unreleasedBody, nextReleaseHeading) =>
+      `## [Unreleased]\n\n## [${newVersion}] - ${today}${newReleaseSection}\n${nextReleaseHeading}`
+  );
 
   // Mise à jour des liens en bas
   const prevVersion = lastTag.replace(/^v/, '');
@@ -251,15 +268,15 @@ async function main() {
   fs.writeFileSync(CHANGELOG_PATH, updatedChangelog, 'utf8');
 
   console.log('✍️ Mise à jour de package.json et package-lock.json...');
-  run(`npm version ${newVersion} --no-git-tag-version`);
+  runNpm(['version', newVersion, '--no-git-tag-version']);
 
   // 6. Commit et Tag Git
   console.log('📦 Création du commit Git...');
-  run('git add package.json package-lock.json CHANGELOG.md');
-  run(`git commit -m "chore(release): v${newVersion}"`);
+  runGit(['add', 'package.json', 'package-lock.json', 'CHANGELOG.md']);
+  runGit(['commit', '-m', `chore(release): v${newVersion}`]);
 
   console.log(`🏷️ Création du tag ${nextTag}...`);
-  run(`git tag -a ${nextTag} -m "Release v${newVersion}"`);
+  runGit(['tag', '-a', nextTag, '-m', `Release v${newVersion}`]);
 
   console.log(`\n🎉 Release v${newVersion} créée avec succès !`);
 
@@ -275,8 +292,8 @@ async function main() {
   if (!shouldPush || shouldPush === 'o' || shouldPush === 'oui' || shouldPush === 'y' || shouldPush === 'yes') {
     console.log('\n🚀 Envoi vers GitHub...');
     try {
-      run(`git push origin ${currentBranch}`);
-      run('git push origin --tags');
+      runGit(['push', 'origin', currentBranch]);
+      runGit(['push', 'origin', '--tags']);
       console.log('✅ Déploiement Git terminé avec succès !');
     } catch (err) {
       console.error('⚠️ Le push a échoué. Vous pouvez exécuter manuellement :');

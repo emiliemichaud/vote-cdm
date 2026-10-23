@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS history (
   abstention   INT          NOT NULL DEFAULT 0,
   total        INT          NOT NULL DEFAULT 0,
   created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_session_numero (session_id, numero),
   CONSTRAINT fk_history_session
     FOREIGN KEY (session_id) REFERENCES sessions(id)
     ON DELETE CASCADE
