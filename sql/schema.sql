@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS votes (
     ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE INDEX idx_votes_session ON votes(session_id);
+CREATE INDEX IF NOT EXISTS idx_votes_session ON votes(session_id);
 
 CREATE TABLE IF NOT EXISTS history (
   id           INT AUTO_INCREMENT PRIMARY KEY,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS history (
     ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE INDEX idx_history_session ON history(session_id);
+CREATE INDEX IF NOT EXISTS idx_history_session ON history(session_id);
 
 -- Si la table sessions existe déjà (déploiement précédent), ajouter la colonne :
 -- ALTER TABLE sessions ADD COLUMN voting_ends_at DATETIME NULL DEFAULT NULL;
