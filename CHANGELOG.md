@@ -7,6 +7,9 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Ajout de boutons pour copier et partager le lien d'administration complet aux co-organisateurs (dans le volet d'informations et au bas du tableau de bord, automatiquement masqué en mode Présentation).
+
 ## [1.2.1] - 2026-10-23
 
 ### Security
