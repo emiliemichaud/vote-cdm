@@ -38,9 +38,19 @@ function setupConnectionMonitor(socket) {
 // Identifiant anonyme et persistant du votant, propre à ce navigateur
 function getVoterId() {
   let id = localStorage.getItem("voter_id");
-  if (!id) {
-    id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
-    localStorage.setItem("voter_id", id);
+  if (!id || typeof id !== "string" || id.length < 8 || id.length > 64) {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      id = crypto.randomUUID();
+    } else if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      id = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    } else {
+      id = "voter_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    }
+    try {
+      localStorage.setItem("voter_id", id);
+    } catch (_) {}
   }
   return id;
 }
@@ -54,11 +64,15 @@ const RESERVED_PATH_NAMES = ["", "index.html", "vote.html", "host.html", "404.ht
 
 function getSessionCodeFromLocation() {
   const fromQuery = new URLSearchParams(window.location.search).get("s");
-  if (fromQuery) return fromQuery;
+  if (fromQuery) {
+    const clean = fromQuery.trim().toUpperCase();
+    return /^[A-Z0-9]{4,10}$/.test(clean) ? clean : null;
+  }
 
   const segment = window.location.pathname.split("/").filter(Boolean).pop() || "";
   if (!RESERVED_PATH_NAMES.includes(segment.toLowerCase())) {
-    return segment;
+    const clean = segment.trim().toUpperCase();
+    return /^[A-Z0-9]{4,10}$/.test(clean) ? clean : null;
   }
   return null;
 }

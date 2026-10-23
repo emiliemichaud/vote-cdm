@@ -1,6 +1,25 @@
 const params = new URLSearchParams(window.location.search);
-const code = params.get("s");
-const hostSecret = params.get("t");
+const rawCode = params.get("s");
+const code = rawCode ? rawCode.trim().toUpperCase() : null;
+const urlSecret = params.get("t");
+
+if (code && urlSecret) {
+  try {
+    sessionStorage.setItem(`host_secret_${code}`, urlSecret);
+  } catch (_) {}
+  params.delete("t");
+  const cleanQuery = params.toString();
+  const cleanUrl = window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "");
+  window.history.replaceState({}, "", cleanUrl);
+}
+
+let storedSecret = null;
+if (code) {
+  try {
+    storedSecret = sessionStorage.getItem(`host_secret_${code}`);
+  } catch (_) {}
+}
+const hostSecret = urlSecret || storedSecret;
 const app = document.getElementById("app");
 const socket = getSocket();
 
@@ -60,6 +79,33 @@ function buildActionButtons(status, totalVotes) {
   `;
 }
 
+function getHostShareUrl() {
+  if (!session || !session.code || !hostSecret) return null;
+  const hostUrl = new URL("host.html", window.location.href);
+  hostUrl.searchParams.set("s", session.code);
+  hostUrl.searchParams.set("t", hostSecret);
+  return hostUrl.toString();
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const input = document.createElement("input");
+      input.value = text;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
 function ensureShell(url) {
   if (shellRenderedForCode === session.code && document.getElementById("mainContent")) {
     return;
@@ -85,6 +131,16 @@ function ensureShell(url) {
       </div>
       <div class="copy-badge" id="copyBadge">Copié !</div>
       <p class="hint">Les participants scannent ce QR code ou saisissent le code sur ${window.location.origin}</p>
+
+      <div style="border-top: 1px solid var(--rule); margin: 20px 0 16px; padding-top: 16px;">
+        <h4 style="margin: 0 0 10px 0; color: var(--navy-2); text-align: center; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Co-organisation</h4>
+        <button id="copyHostUrlBtn" class="secondary" style="width: 100%; font-size: 13px; padding: 9px 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <svg class="lucide lucide-key" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3"/></svg>
+          <span id="copyHostBtnLabel">Copier le lien organisateur</span>
+        </button>
+        <div class="copy-badge" id="copyHostBadge">Lien organisateur copié !</div>
+        <p class="hint" style="font-size: 11px; margin: 0; text-align: center; line-height: 1.4;">Donne le contrôle complet de la séance. Ne pas projeter ce lien.</p>
+      </div>
     </div>
 
     <div class="layout-container">
@@ -116,16 +172,7 @@ function ensureShell(url) {
 
   if (copyBtn) {
     const triggerCopy = async () => {
-      try {
-        await navigator.clipboard.writeText(url);
-      } catch {
-        const input = document.createElement("input");
-        input.value = url;
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand("copy");
-        document.body.removeChild(input);
-      }
+      await copyToClipboard(url);
       if (copyIconWrap) copyIconWrap.innerHTML = checkIconSvg;
       if (copyBadge) copyBadge.classList.add("visible");
       setTimeout(() => {
@@ -138,6 +185,25 @@ function ensureShell(url) {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         triggerCopy();
+      }
+    };
+  }
+
+  const copyHostBtn = document.getElementById("copyHostUrlBtn");
+  const copyHostBadge = document.getElementById("copyHostBadge");
+  const copyHostBtnLabel = document.getElementById("copyHostBtnLabel");
+  if (copyHostBtn) {
+    copyHostBtn.onclick = async () => {
+      const hostUrl = getHostShareUrl();
+      if (!hostUrl) return;
+      const ok = await copyToClipboard(hostUrl);
+      if (ok) {
+        if (copyHostBadge) copyHostBadge.classList.add("visible");
+        if (copyHostBtnLabel) copyHostBtnLabel.textContent = "Copié !";
+        setTimeout(() => {
+          if (copyHostBadge) copyHostBadge.classList.remove("visible");
+          if (copyHostBtnLabel) copyHostBtnLabel.textContent = "Copier le lien organisateur";
+        }, 1800);
       }
     };
   }
@@ -281,6 +347,7 @@ function render() {
     <div class="card">
       <div class="stack">
         <button id="downloadPdfBtn" class="secondary">Télécharger les résultats</button>
+        <button id="shareHostBtn" class="secondary" style="${presentationMode ? 'display: none;' : ''}">Partager l'accès organisateur</button>
         <button id="closeBtn" class="danger">Clôture de session</button>
       </div>
       <p class="hint" style="margin-top:10px;">Ferme définitivement cette session et supprime tous ses votes de la base de données. Action irréversible.</p>
@@ -307,6 +374,22 @@ function render() {
   const dlBtn = document.getElementById("downloadPdfBtn");
   dlBtn.onclick = downloadPdf;
   dlBtn.style.display = (total > 0 || history.length > 0) ? "block" : "none";
+
+  const shareHostBtn = document.getElementById("shareHostBtn");
+  if (shareHostBtn) {
+    shareHostBtn.onclick = async () => {
+      const hostUrl = getHostShareUrl();
+      if (!hostUrl) return;
+      const ok = await copyToClipboard(hostUrl);
+      if (ok) {
+        const origText = shareHostBtn.textContent;
+        shareHostBtn.textContent = "Lien organisateur copié !";
+        setTimeout(() => {
+          shareHostBtn.textContent = origText;
+        }, 2000);
+      }
+    };
+  }
 }
 
 function buildResultCard(counts, total, isPresentation, onlineCount) {
@@ -417,6 +500,9 @@ function closeSessionPermanently() {
       return;
     }
     clearVoteTimer();
+    try {
+      if (code) sessionStorage.removeItem(`host_secret_${code}`);
+    } catch (_) {}
     session = null;
     app.innerHTML = `<div class="card center hint">Cette session a été clôturée et ses données ont été supprimées. <a href="index.html">Démarrer une nouvelle session</a></div>`;
   });
@@ -487,6 +573,9 @@ function attachSocketListeners() {
 
   socket.on("session-closed", () => {
     clearVoteTimer();
+    try {
+      if (code) sessionStorage.removeItem(`host_secret_${code}`);
+    } catch (_) {}
     session = null;
     app.innerHTML = `<div class="card center hint">Cette session a été clôturée et ses données ont été supprimées. <a href="index.html">Démarrer une nouvelle session</a></div>`;
   });
@@ -554,7 +643,7 @@ async function downloadPdf() {
   btn.disabled = true;
 
   try {
-    const { $typst } = await import('https://cdn.jsdelivr.net/npm/@myriaddreamin/typst.ts/dist/esm/contrib/all-in-one-lite.bundle.js');
+    const { $typst } = await import('https://cdn.jsdelivr.net/npm/@myriaddreamin/typst.ts@0.7.0/dist/esm/contrib/all-in-one-lite.bundle.js');
     if (!isTypstInitialized) {
       await $typst.setCompilerInitOptions({
         getModule: () => 'https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@0.7.0/pkg/typst_ts_web_compiler_bg.wasm'
@@ -573,7 +662,7 @@ async function downloadPdf() {
       )).filter(Boolean).map(buf => new Uint8Array(buf));
 
       if (fontBuffers.length) {
-        const { TypstSnippet } = await import('https://cdn.jsdelivr.net/npm/@myriaddreamin/typst.ts/dist/esm/contrib/all-in-one-lite.bundle.js');
+        const { TypstSnippet } = await import('https://cdn.jsdelivr.net/npm/@myriaddreamin/typst.ts@0.7.0/dist/esm/contrib/all-in-one-lite.bundle.js');
         $typst.use(TypstSnippet.preloadFonts(fontBuffers));
       }
       isTypstInitialized = true;
