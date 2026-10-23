@@ -7,6 +7,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-23
+
 ### Security
 - Élimination d'une injection DOM-based XSS dans `public/vote.js` via `textContent` au lieu d'une interpolation directe dans `innerHTML`.
 - Protection du jeton organisateur `hostSecret` par stockage en `sessionStorage` et nettoyage immédiat de `?t=` de l'URL (`history.replaceState`), empêchant sa fuite lors de projections publiques ou dans l'en-tête `Referer`.
@@ -61,7 +63,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - Correction de l'affichage du dépouillement en mode présentation sans les compteurs de connexion.
 
-[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.0.0...v1.1.0
