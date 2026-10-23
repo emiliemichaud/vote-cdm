@@ -7,6 +7,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-23
+
 ### Added
 - Ajout de boutons pour copier et partager le lien d'administration complet aux co-organisateurs (dans le volet d'informations et au bas du tableau de bord, automatiquement masqué en mode Présentation).
 
@@ -66,7 +68,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - Correction de l'affichage du dépouillement en mode présentation sans les compteurs de connexion.
 
-[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.1.0...v1.1.1
