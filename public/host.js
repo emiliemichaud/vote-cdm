@@ -697,7 +697,8 @@ function joinSession() {
     if (res.history) {
       history = res.history;
     }
-    if (isFirstLoad && session.status === "idle" && total === 0 && history.length === 0) {
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    if (isFirstLoad && session.status === "idle" && total === 0 && history.length === 0 && !isMobile) {
       isDrawerOpen = true;
     }
 

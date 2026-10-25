@@ -10,6 +10,9 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 - Ajout d'une icône d'agrandissement en mode présentation permettant d'afficher la participation ou les résultats au premier plan dans une modale grand format (idéale pour la projection).
 
+### Changed
+- Désactivation de l'ouverture automatique du volet latéral d'informations sur mobile (écrans ≤ 768px) lors de l'arrivée sur la page d'administration.
+
 ## [1.3.0] - 2026-10-23
 
 ### Added
