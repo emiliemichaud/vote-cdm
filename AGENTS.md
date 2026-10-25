@@ -72,3 +72,12 @@ Ce document définit les standards d'architecture, les frontières de confiance 
 1. **Zéro injection shell** :
    - Ne jamais utiliser `child_process.execSync` avec une chaîne de commande concaténée.
    - Utiliser exclusivement `execFileSync(binary, [args...])` sans invoquer de sous-shell `/bin/sh`.
+
+---
+
+## 3. Workflow Git et Règles d'Engagement
+
+1. **Aucun commit automatique** :
+   - Ne jamais exécuter `git commit` ou modifier l'historique Git de sa propre initiative.
+   - Attendre systématiquement la consigne explicite et formelle de l'utilisateur avant de valider un commit.
+
