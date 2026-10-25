@@ -7,6 +7,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-25
+
 ### Security
 - Masquage du code de session dans l'URL de l'organisateur (`host.html`) via `sessionStorage` (`host_active_code`) et `window.history.replaceState`, empêchant la visibilité du code lors de projections publiques.
 
@@ -79,7 +81,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - Correction de l'affichage du dépouillement en mode présentation sans les compteurs de connexion.
 
-[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.0...v1.2.1
