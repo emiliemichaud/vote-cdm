@@ -36,6 +36,7 @@ let countdownDuration = null;
 let countdownInterval = null;
 let autoStopInProgress = false;
 let presentationMode = false;
+let isPresModalOpen = false;
 
 function statusLabel(s) {
   return { idle: "En attente", voting: "Vote en cours", prolonged: "Vote en cours", stopped: "Vote clos", results: "Résultats affichés" }[s] || s;
@@ -155,6 +156,13 @@ function ensureShell(url) {
         <div class="url-copy-text" style="font-size: 18px; margin-top: 20px;">${url}</div>
       </div>
     </div>
+
+    <div id="presModal" class="modal-overlay" style="display: ${isPresModalOpen ? 'flex' : 'none'};">
+      <div class="modal-content pres-modal-content">
+        <span class="modal-close" id="presModalClose" title="Fermer (Échap)"><svg class="lucide lucide-x" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>
+        <div id="presModalBody"></div>
+      </div>
+    </div>
   `;
 
   new QRCode(document.getElementById("qrcode"), {
@@ -233,8 +241,16 @@ function ensureShell(url) {
         isQrModalOpen = false;
         const m = document.getElementById("qrModal");
         if (m) m.style.display = "none";
+        return;
       }
-      closeDrawer();
+      if (isPresModalOpen) {
+        closePresModal();
+        return;
+      }
+      if (isDrawerOpen) {
+        closeDrawer();
+        return;
+      }
     }
   });
 
@@ -253,6 +269,27 @@ function ensureShell(url) {
       qrModal.style.display = "none";
     }
   };
+
+  const presModal = document.getElementById("presModal");
+  document.getElementById("presModalClose").onclick = closePresModal;
+  presModal.onclick = (e) => {
+    if (e.target === presModal) {
+      closePresModal();
+    }
+  };
+}
+
+function closePresModal() {
+  isPresModalOpen = false;
+  const m = document.getElementById("presModal");
+  if (m) m.style.display = "none";
+}
+
+function openPresModal() {
+  isPresModalOpen = true;
+  const m = document.getElementById("presModal");
+  if (m) m.style.display = "flex";
+  updatePresModalContent();
 }
 
 function closeDrawer() {
@@ -260,6 +297,35 @@ function closeDrawer() {
     isDrawerOpen = false;
     const panel = document.getElementById("sidePanel");
     if (panel) panel.classList.remove("open");
+  }
+}
+
+function updatePresModalContent() {
+  const body = document.getElementById("presModalBody");
+  if (!body || !session) return;
+
+  if (session.status === "results") {
+    let verdict = "Égalité";
+    let verdictClass = "";
+    if (counts.pour > counts.contre) { verdict = "Résultat : Pour"; verdictClass = "pour"; }
+    else if (counts.contre > counts.pour) { verdict = "Résultat : Contre"; verdictClass = "contre"; }
+
+    body.innerHTML = `
+      <div class="verdict ${verdictClass}">${verdict}</div>
+      <div class="turnout">${total} votant${total > 1 ? "s" : ""}</div>
+      <div class="tally">
+        ${tallyRow("Pour", "pour", counts.pour, total, true)}
+        ${tallyRow("Contre", "contre", counts.contre, total, true)}
+        ${tallyRow("Abstention", "abst", counts.abstention, total, true)}
+      </div>
+    `;
+  } else {
+    body.innerHTML = `
+      <div class="eyebrow" style="margin-bottom:14px;">Participation</div>
+      <div class="turnout" style="font-size:28px; margin: 24px 0 16px; font-weight:600;">
+        ${total} vote${total > 1 ? "s" : ""} enregistré${total > 1 ? "s" : ""}
+      </div>
+    `;
   }
 }
 
@@ -299,6 +365,9 @@ function render() {
   } else if (presentationMode) {
     lowerContent = `
     <div class="card center">
+      <button class="card-icon-btn" id="openPresModalBtn" title="Agrandir en mode présentation (premier plan)" aria-label="Agrandir">
+        <svg class="lucide lucide-maximize-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>
+      </button>
       <div class="eyebrow" style="margin-bottom:8px;">Participation</div>
       <div class="turnout" style="font-size:18px; margin: 10px 0 6px;">${total} vote${total > 1 ? "s" : ""} enregistré${total > 1 ? "s" : ""}</div>
     </div>
@@ -328,7 +397,7 @@ function render() {
       <p class="hint">Cette session expirera automatiquement le ${formatExpiryDate(session)}.</p>
     </div>
 
-    <div class="card">
+    <div class="card" id="adminActionsCard">
       <div class="stack">
         ${buildActionButtons(session.status, total)}
       </div>
@@ -344,7 +413,7 @@ function render() {
 
     ${lowerContent}
 
-    <div class="card">
+    <div class="card" id="adminFooterCard">
       <div class="stack">
         <button id="downloadPdfBtn" class="secondary">Télécharger les résultats</button>
         <button id="shareHostBtn" class="secondary" style="${presentationMode ? 'display: none;' : ''}">Partager l'accès organisateur</button>
@@ -364,12 +433,19 @@ function render() {
   bindClick("resultsBtn", showResults);
   bindClick("newBtn", resetSessionForNewItem);
   bindClick("closeBtn", closeSessionPermanently);
+  bindClick("openPresModalBtn", openPresModal);
+
   document.getElementsByName("display-mode").forEach(radio => {
     radio.onchange = (event) => {
       presentationMode = (event.target.value === "pres");
+      if (!presentationMode && isPresModalOpen) {
+        closePresModal();
+      }
       render();
     };
   });
+
+  updatePresModalContent();
 
   const dlBtn = document.getElementById("downloadPdfBtn");
   dlBtn.onclick = downloadPdf;
@@ -399,9 +475,15 @@ function buildResultCard(counts, total, isPresentation, onlineCount) {
   else if (counts.contre > counts.pour) { verdict = "Résultat : Contre"; verdictClass = "contre"; }
 
   const onlineHtml = !isPresentation ? `<div class="turnout" style="margin-bottom:8px;">${onlineCount} connexion${onlineCount > 1 ? "s" : ""} en ce moment</div>` : "";
+  const expandBtn = isPresentation ? `
+    <button class="card-icon-btn" id="openPresModalBtn" title="Agrandir en mode présentation (premier plan)" aria-label="Agrandir">
+      <svg class="lucide lucide-maximize-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>
+    </button>
+  ` : "";
 
   return `
-    <div class="card">
+    <div class="card ${isPresentation ? "center" : ""}">
+      ${expandBtn}
       <div class="verdict ${verdictClass}">${verdict}</div>
       ${onlineHtml}
       <div class="turnout">${total} votant${total > 1 ? "s" : ""}</div>
@@ -439,11 +521,19 @@ function beginVoteTimer(seconds = DEFAULT_VOTE_SECONDS) {
   countdownInterval = setInterval(() => {
     const remainingMs = Math.max(0, countdownDeadline - Date.now());
     const timerBarFill = document.getElementById("timerBarFill");
+    const modalTimerBarFill = document.getElementById("modalTimerBarFill");
     const timerSeconds = document.getElementById("timerSeconds");
-    if (timerBarFill) {
+    if (timerBarFill || modalTimerBarFill) {
       const pct = (remainingMs / countdownDuration) * 100;
-      timerBarFill.style.width = pct + "%";
-      timerBarFill.classList.toggle("warning", remainingMs <= 3000);
+      const isWarn = remainingMs <= 3000;
+      if (timerBarFill) {
+        timerBarFill.style.width = pct + "%";
+        timerBarFill.classList.toggle("warning", isWarn);
+      }
+      if (modalTimerBarFill) {
+        modalTimerBarFill.style.width = pct + "%";
+        modalTimerBarFill.classList.toggle("warning", isWarn);
+      }
     }
     if (timerSeconds) {
       timerSeconds.textContent = Math.ceil(remainingMs / 1000) + "s";
@@ -500,6 +590,7 @@ function closeSessionPermanently() {
       return;
     }
     clearVoteTimer();
+    closePresModal();
     try {
       if (code) sessionStorage.removeItem(`host_secret_${code}`);
     } catch (_) {}
@@ -573,6 +664,7 @@ function attachSocketListeners() {
 
   socket.on("session-closed", () => {
     clearVoteTimer();
+    closePresModal();
     try {
       if (code) sessionStorage.removeItem(`host_secret_${code}`);
     } catch (_) {}

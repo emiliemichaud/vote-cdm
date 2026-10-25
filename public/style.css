@@ -588,3 +588,83 @@ button.danger:hover { background: var(--contre-bg); }
 .modal-close:hover {
   color: var(--contre);
 }
+
+/* Bouton d'action dans le coin de carte */
+.card-icon-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--navy);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.card-icon-btn:hover {
+  opacity: 1;
+  background: var(--paper-2);
+  border-color: var(--rule);
+}
+.card-icon-btn:active {
+  transform: scale(0.95);
+}
+
+/* Modal de présentation agrandie au premier plan */
+.pres-modal-content {
+  width: 100%;
+  max-width: 760px;
+  padding: 44px 36px;
+  text-align: center;
+  border-top: 4px solid var(--navy);
+}
+.pres-modal-content .eyebrow {
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  margin-bottom: 12px;
+}
+.pres-modal-content .status-banner {
+  font-size: 18px;
+  padding: 10px 24px;
+  margin-bottom: 20px;
+}
+.pres-modal-content .timer-bar-track {
+  height: 12px;
+  border-radius: 6px;
+  margin: 0 0 24px;
+}
+.pres-modal-content .vote-timer-extended {
+  font-size: 18px;
+  margin-bottom: 24px;
+}
+.pres-modal-content .verdict {
+  font-size: 46px;
+  margin: 10px 0 6px;
+}
+.pres-modal-content .turnout {
+  font-size: 22px !important;
+  margin: 12px 0 20px !important;
+}
+.pres-modal-content .tally {
+  row-gap: 16px;
+  column-gap: 20px;
+  margin-top: 20px;
+}
+.pres-modal-content .tally .label {
+  font-size: 24px;
+}
+.pres-modal-content .tally .count {
+  font-size: 36px;
+}
+.pres-modal-content .tally .bar-track {
+  height: 12px;
+  border-radius: 6px;
+}
+
