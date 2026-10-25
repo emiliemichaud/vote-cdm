@@ -592,10 +592,10 @@ button.danger:hover { background: var(--contre-bg); }
 /* Bouton d'action dans le coin de carte */
 .card-icon-btn {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 34px;
-  height: 34px;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -605,13 +605,20 @@ button.danger:hover { background: var(--contre-bg); }
   border-radius: var(--radius);
   color: var(--navy);
   cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  opacity: 0.75;
+  z-index: 5;
+  user-select: none;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.card-icon-btn svg {
+  pointer-events: none;
+  display: block;
 }
 .card-icon-btn:hover {
   opacity: 1;
   background: var(--paper-2);
   border-color: var(--rule);
+  color: var(--navy);
 }
 .card-icon-btn:active {
   transform: scale(0.95);
