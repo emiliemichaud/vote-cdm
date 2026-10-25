@@ -13,10 +13,11 @@ document.getElementById("createBtn").addEventListener("click", () => {
       btn.disabled = false;
       return;
     }
-    const url = new URL("host.html", window.location.href);
-    url.searchParams.set("s", res.code);
-    url.searchParams.set("t", res.hostSecret);
-    window.location.href = url.toString();
+    try {
+      sessionStorage.setItem("host_active_code", res.code);
+      sessionStorage.setItem(`host_secret_${res.code}`, res.hostSecret);
+    } catch (_) {}
+    window.location.href = "host.html";
   });
 });
 

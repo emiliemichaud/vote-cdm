@@ -1,12 +1,29 @@
 const params = new URLSearchParams(window.location.search);
 const rawCode = params.get("s");
-const code = rawCode ? rawCode.trim().toUpperCase() : null;
+const urlCode = rawCode ? rawCode.trim().toUpperCase() : null;
 const urlSecret = params.get("t");
+
+let storedCode = null;
+try {
+  storedCode = sessionStorage.getItem("host_active_code");
+} catch (_) {}
+
+const code = urlCode || storedCode;
+
+if (urlCode) {
+  try {
+    sessionStorage.setItem("host_active_code", urlCode);
+  } catch (_) {}
+}
 
 if (code && urlSecret) {
   try {
     sessionStorage.setItem(`host_secret_${code}`, urlSecret);
   } catch (_) {}
+}
+
+if (params.has("s") || params.has("t")) {
+  params.delete("s");
   params.delete("t");
   const cleanQuery = params.toString();
   const cleanUrl = window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "");
@@ -593,6 +610,7 @@ function closeSessionPermanently() {
     closePresModal();
     try {
       if (code) sessionStorage.removeItem(`host_secret_${code}`);
+      sessionStorage.removeItem("host_active_code");
     } catch (_) {}
     session = null;
     app.innerHTML = `<div class="card center hint">Cette session a été clôturée et ses données ont été supprimées. <a href="index.html">Démarrer une nouvelle session</a></div>`;
@@ -667,6 +685,7 @@ function attachSocketListeners() {
     closePresModal();
     try {
       if (code) sessionStorage.removeItem(`host_secret_${code}`);
+      sessionStorage.removeItem("host_active_code");
     } catch (_) {}
     session = null;
     app.innerHTML = `<div class="card center hint">Cette session a été clôturée et ses données ont été supprimées. <a href="index.html">Démarrer une nouvelle session</a></div>`;

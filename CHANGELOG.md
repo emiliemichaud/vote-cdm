@@ -7,6 +7,9 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+- Masquage du code de session dans l'URL de l'organisateur (`host.html`) via `sessionStorage` (`host_active_code`) et `window.history.replaceState`, empêchant la visibilité du code lors de projections publiques.
+
 ## [1.4.0] - 2026-10-25
 
 ### Added

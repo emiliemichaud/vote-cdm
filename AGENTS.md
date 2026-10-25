@@ -43,9 +43,9 @@ Ce document définit les standards d'architecture, les frontières de confiance 
 1. **Élimination des XSS DOM** :
    - Ne jamais injecter de variables issues de l'URL (`window.location.search`, `pathname`), du stockage local ou de Socket.IO directement dans un puits HTML (`element.innerHTML`, `outerHTML`).
    - Utiliser `textContent`, `document.createElement()` ou `replaceChildren()`.
-2. **Protection du secret organisateur (`hostSecret`)** :
-   - Le secret d'administration ne doit jamais stagner dans la barre d'adresse du navigateur.
-   - À l'ouverture de `host.html`, stocker immédiatement le secret dans `sessionStorage` (`host_secret_${code}`) et effacer le paramètre `?t=` via `window.history.replaceState`.
+2. **Protection du secret organisateur (`hostSecret`) et du code session (`code`)** :
+   - Le secret d'administration et le code de la session ne doivent pas stagner dans la barre d'adresse du navigateur de l'organisateur (évite l'espionnage d'écran ou la fuite lors de projections).
+   - À la création de session ou à l'ouverture de `host.html`, stocker le code et le secret dans `sessionStorage` (`host_active_code` et `host_secret_${code}`) et effacer immédiatement les paramètres `?s=` et `?t=` via `window.history.replaceState`.
 3. **Génération d'identifiants sécurisés** :
    - Utiliser `crypto.randomUUID()` ou `crypto.getRandomValues()` pour générer des identifiants votants. Ne jamais utiliser `Math.random()`.
 4. **Dépendances tierces (Typst & CDN)** :
