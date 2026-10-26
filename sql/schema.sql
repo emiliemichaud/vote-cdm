@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   status       ENUM('idle', 'voting', 'prolonged', 'stopped', 'results')
                NOT NULL DEFAULT 'idle',
   host_secret  CHAR(36)     NOT NULL,
+  is_locked    TINYINT(1)   NOT NULL DEFAULT 0,
   created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   voting_ends_at DATETIME   NULL DEFAULT NULL
 ) ENGINE=InnoDB;
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS history (
 
 CREATE INDEX IF NOT EXISTS idx_history_session ON history(session_id);
 
--- Si la table sessions existe déjà (déploiement précédent), ajouter la colonne :
+-- Si la table sessions existe déjà (déploiement précédent), ajouter les colonnes :
 -- ALTER TABLE sessions ADD COLUMN voting_ends_at DATETIME NULL DEFAULT NULL;
+-- ALTER TABLE sessions ADD COLUMN is_locked TINYINT(1) NOT NULL DEFAULT 0;
 

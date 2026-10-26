@@ -225,10 +225,22 @@ function joinSession() {
       if (!session) {
         const card = document.createElement("div");
         card.className = "card center hint";
-        card.append("Session introuvable. Vérifiez le code : ");
-        const strong = document.createElement("strong");
-        strong.textContent = code || "";
-        card.appendChild(strong);
+        if (res && res.locked) {
+          const title = document.createElement("div");
+          title.className = "eyebrow";
+          title.style.marginBottom = "8px";
+          title.textContent = "Session verrouillée";
+          const msg = document.createElement("p");
+          msg.style.margin = "8px 0 0";
+          msg.textContent = res.error || "Cette session est verrouillée. De nouveaux participants ne peuvent plus la rejoindre.";
+          card.appendChild(title);
+          card.appendChild(msg);
+        } else {
+          card.append("Session introuvable. Vérifiez le code : ");
+          const strong = document.createElement("strong");
+          strong.textContent = code || "";
+          card.appendChild(strong);
+        }
         app.replaceChildren(card);
       }
       return;

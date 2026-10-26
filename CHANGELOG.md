@@ -7,6 +7,13 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Possibilité pour l'organisateur de verrouiller ou déverrouiller la session en cours via un bouton d'action rapide dans l'en-tête et dans le volet latéral d'informations.
+- Blocage des nouveaux visiteurs lorsqu'une session est verrouillée, avec affichage d'un message explicite indiquant que la session n'accepte plus d'entrants.
+- Maintien de l'accès et du droit de vote pour les participants déjà enregistrés dans la séance (y compris en cas d'actualisation de la page ou de reconnexion réseau).
+- Maintien de l'accès garanti aux co-organisateurs disposant du lien d'administration complet.
+- Colonne `is_locked` dans la table `sessions` avec migration automatique non bloquante au démarrage.
+
 ## [1.4.1] - 2026-10-25
 
 ### Security

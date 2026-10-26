@@ -22,6 +22,7 @@ document.getElementById("createBtn").addEventListener("click", () => {
 });
 
 document.getElementById("joinBtn").addEventListener("click", () => {
+  const joinBtn = document.getElementById("joinBtn");
   const joinErr = document.getElementById("joinErr");
   const code = document.getElementById("joinCode").value.trim().toUpperCase();
   joinErr.style.display = "none";
@@ -30,7 +31,29 @@ document.getElementById("joinBtn").addEventListener("click", () => {
     joinErr.style.display = "block";
     return;
   }
-  window.location.href = voteUrlForCode(code);
+  joinBtn.disabled = true;
+
+  let resolved = false;
+  const timer = setTimeout(() => {
+    if (!resolved) {
+      resolved = true;
+      joinBtn.disabled = false;
+      window.location.href = voteUrlForCode(code);
+    }
+  }, 3000);
+
+  socket.emit("join-as-voter", { code, voterId: getVoterId() }, (res) => {
+    if (resolved) return;
+    resolved = true;
+    clearTimeout(timer);
+    joinBtn.disabled = false;
+    if (res && !res.ok) {
+      joinErr.textContent = res.error || "Session introuvable.";
+      joinErr.style.display = "block";
+      return;
+    }
+    window.location.href = voteUrlForCode(code);
+  });
 });
 
 document.getElementById("joinCode").addEventListener("keydown", (e) => {

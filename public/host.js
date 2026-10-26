@@ -124,6 +124,66 @@ async function copyToClipboard(text) {
   }
 }
 
+function updateSidePanelLockState() {
+  const sideBtn = document.getElementById("sidePanelLockBtn");
+  const sideIcon = document.getElementById("sidePanelLockIcon");
+  const sideLabel = document.getElementById("sidePanelLockLabel");
+  const sideHint = document.getElementById("sidePanelLockHint");
+
+  const headerBtn = document.getElementById("headerLockBtn");
+  const headerIcon = document.getElementById("headerLockIcon");
+  const headerLabel = document.getElementById("headerLockLabel");
+
+  if (!session) return;
+
+  if (session.is_locked) {
+    if (sideBtn) sideBtn.classList.add("locked");
+    if (sideIcon) sideIcon.innerHTML = `<svg class="lucide lucide-unlock" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`;
+    if (sideLabel) sideLabel.textContent = "Déverrouiller la session";
+    if (sideHint) sideHint.textContent = "La session est verrouillée : aucun nouveau visiteur ne peut rejoindre avec le code.";
+
+    if (headerBtn) {
+      headerBtn.classList.add("locked");
+      headerBtn.title = "Session verrouillée (les nouvelles personnes ne peuvent pas rejoindre — cliquer pour déverrouiller)";
+    }
+    if (headerIcon) headerIcon.innerHTML = `<svg class="lucide lucide-lock" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+    if (headerLabel) headerLabel.textContent = "Verrouillée";
+  } else {
+    if (sideBtn) sideBtn.classList.remove("locked");
+    if (sideIcon) sideIcon.innerHTML = `<svg class="lucide lucide-lock" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+    if (sideLabel) sideLabel.textContent = "Verrouiller la session";
+    if (sideHint) sideHint.textContent = "Empêche de nouveaux visiteurs de rejoindre avec le code.";
+
+    if (headerBtn) {
+      headerBtn.classList.remove("locked");
+      headerBtn.title = "Verrouiller la session (empêche de nouvelles personnes de la rejoindre)";
+    }
+    if (headerIcon) headerIcon.innerHTML = `<svg class="lucide lucide-unlock" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`;
+    if (headerLabel) headerLabel.textContent = "Ouverte";
+  }
+}
+
+function toggleSessionLock() {
+  if (!session) return;
+  const newLocked = !session.is_locked;
+  const sideBtn = document.getElementById("sidePanelLockBtn");
+  const headerBtn = document.getElementById("headerLockBtn");
+  if (sideBtn) sideBtn.disabled = true;
+  if (headerBtn) headerBtn.disabled = true;
+
+  socket.emit("toggle-lock-session", { code, hostSecret, locked: newLocked }, (res) => {
+    if (sideBtn) sideBtn.disabled = false;
+    if (headerBtn) headerBtn.disabled = false;
+    if (!res || !res.ok) {
+      alert("Erreur : " + (res?.error || "Erreur lors du verrouillage"));
+      return;
+    }
+    session.is_locked = res.is_locked;
+    updateSidePanelLockState();
+    render();
+  });
+}
+
 function ensureShell(url) {
   if (shellRenderedForCode === session.code && document.getElementById("mainContent")) {
     return;
@@ -134,6 +194,11 @@ function ensureShell(url) {
     <button class="panel-toggle-btn" id="openPanelBtn" title="Infos Session" aria-label="Infos Session">
       <svg class="lucide lucide-menu" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
       <span class="panel-toggle-label">Infos Session</span>
+    </button>
+
+    <button class="header-lock-btn" id="headerLockBtn" title="Verrouiller la session (empêche de nouvelles personnes de la rejoindre)" aria-label="Verrouillage session">
+      <span id="headerLockIcon"></span>
+      <span id="headerLockLabel" class="header-lock-label"></span>
     </button>
 
     <div class="side-panel ${isDrawerOpen ? 'open' : ''}" id="sidePanel">
@@ -150,7 +215,7 @@ function ensureShell(url) {
       <div class="copy-badge" id="copyBadge">Copié !</div>
       <p class="hint">Les participants scannent ce QR code ou saisissent le code sur ${window.location.origin}</p>
 
-      <div style="border-top: 1px solid var(--rule); margin: 20px 0 16px; padding-top: 16px;">
+      <div style="border-top: 1px solid var(--rule); margin: 20px 0 16px; padding-top: 16px; width: 100%;">
         <h4 style="margin: 0 0 10px 0; color: var(--navy-2); text-align: center; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Co-organisation</h4>
         <button id="copyHostUrlBtn" class="secondary" style="width: 100%; font-size: 13px; padding: 9px 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
           <svg class="lucide lucide-key" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3"/></svg>
@@ -158,6 +223,15 @@ function ensureShell(url) {
         </button>
         <div class="copy-badge" id="copyHostBadge">Lien organisateur copié !</div>
         <p class="hint" style="font-size: 11px; margin: 0; text-align: center; line-height: 1.4;">Donne le contrôle complet de la séance. Ne pas projeter ce lien.</p>
+      </div>
+
+      <div style="border-top: 1px solid var(--rule); margin: 20px 0 16px; padding-top: 16px; width: 100%;">
+        <h4 style="margin: 0 0 10px 0; color: var(--navy-2); text-align: center; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Accès séance</h4>
+        <button id="sidePanelLockBtn" class="secondary" style="width: 100%; font-size: 13px; padding: 9px 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span id="sidePanelLockIcon"></span>
+          <span id="sidePanelLockLabel">Verrouiller la session</span>
+        </button>
+        <p id="sidePanelLockHint" class="hint" style="font-size: 11px; margin: 0; text-align: center; line-height: 1.4;">Empêche de nouveaux visiteurs de rejoindre avec le code.</p>
       </div>
     </div>
 
@@ -232,6 +306,16 @@ function ensureShell(url) {
       }
     };
   }
+
+  const sideLockBtn = document.getElementById("sidePanelLockBtn");
+  if (sideLockBtn) {
+    sideLockBtn.onclick = toggleSessionLock;
+  }
+  const headerLockBtn = document.getElementById("headerLockBtn");
+  if (headerLockBtn) {
+    headerLockBtn.onclick = toggleSessionLock;
+  }
+  updateSidePanelLockState();
 
   document.getElementById("openPanelBtn").onclick = () => {
     isDrawerOpen = true;
@@ -433,7 +517,6 @@ function render() {
     <div class="card" id="adminFooterCard">
       <div class="stack">
         <button id="downloadPdfBtn" class="secondary">Télécharger les résultats</button>
-        <button id="shareHostBtn" class="secondary" style="${presentationMode ? 'display: none;' : ''}">Partager l'accès organisateur</button>
         <button id="closeBtn" class="danger">Clôture de session</button>
       </div>
       <p class="hint" style="margin-top:10px;">Ferme définitivement cette session et supprime tous ses votes de la base de données. Action irréversible.</p>
@@ -452,6 +535,8 @@ function render() {
   bindClick("closeBtn", closeSessionPermanently);
   bindClick("openPresModalBtn", openPresModal);
 
+  updateSidePanelLockState();
+
   document.getElementsByName("display-mode").forEach(radio => {
     radio.onchange = (event) => {
       presentationMode = (event.target.value === "pres");
@@ -467,22 +552,6 @@ function render() {
   const dlBtn = document.getElementById("downloadPdfBtn");
   dlBtn.onclick = downloadPdf;
   dlBtn.style.display = (total > 0 || history.length > 0) ? "block" : "none";
-
-  const shareHostBtn = document.getElementById("shareHostBtn");
-  if (shareHostBtn) {
-    shareHostBtn.onclick = async () => {
-      const hostUrl = getHostShareUrl();
-      if (!hostUrl) return;
-      const ok = await copyToClipboard(hostUrl);
-      if (ok) {
-        const origText = shareHostBtn.textContent;
-        shareHostBtn.textContent = "Lien organisateur copié !";
-        setTimeout(() => {
-          shareHostBtn.textContent = origText;
-        }, 2000);
-      }
-    };
-  }
 }
 
 function buildResultCard(counts, total, isPresentation, onlineCount) {
@@ -677,6 +746,13 @@ function attachSocketListeners() {
 
   socket.on("presence-updated", (payload) => {
     onlineCount = payload.onlineCount;
+    render();
+  });
+
+  socket.on("session-lock-updated", (payload) => {
+    if (!session) return;
+    session.is_locked = Boolean(payload.is_locked);
+    updateSidePanelLockState();
     render();
   });
 

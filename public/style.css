@@ -508,6 +508,51 @@ button.danger:hover { background: var(--contre-bg); }
   }
 }
 
+.header-lock-btn {
+  position: fixed;
+  top: 24px;
+  right: 16px;
+  z-index: 90;
+  background: var(--paper);
+  color: var(--navy);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 15px;
+  box-shadow: 0 2px 5px rgba(22, 35, 47, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.header-lock-btn:hover {
+  background: var(--paper-2);
+}
+.header-lock-btn.locked {
+  border-color: var(--contre);
+  color: var(--contre);
+  background: var(--contre-bg);
+}
+.header-lock-btn.locked:hover {
+  background: #f7dedc;
+}
+
+@media (max-width: 600px) {
+  .header-lock-btn {
+    top: 14px;
+    right: 12px;
+    padding: 8px 10px;
+    font-size: 17px;
+  }
+  .header-lock-btn .header-lock-label {
+    display: none;
+  }
+}
+
 .connection-banner {
   display: none;
   position: fixed;
@@ -673,5 +718,13 @@ button.danger:hover { background: var(--contre-bg); }
 .pres-modal-content .tally .bar-track {
   height: 12px;
   border-radius: 6px;
+}
+
+button.secondary.locked {
+  border-color: var(--contre);
+  color: var(--contre);
+}
+button.secondary.locked:hover {
+  background: var(--contre-bg);
 }
 
