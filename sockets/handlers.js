@@ -3,6 +3,9 @@ const { v4: uuidv4 } = require('uuid');
 const { customAlphabet } = require('nanoid');
 const pool = require('../db');
 
+// Migration automatique non bloquante si la colonne is_locked n'existe pas encore
+pool.query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS is_locked TINYINT(1) NOT NULL DEFAULT 0').catch(() => {});
+
 const generateCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 5);
 
 const room = (code) => `session:${code}`;
@@ -10,7 +13,17 @@ const votersRoom = (code) => `voters:${code}`;
 const hostRoom = (code) => `host:${code}`;
 
 const tallyTimers = new Map();
+const allowedVotersBySession = new Map();
 const TALLY_PUSH_INTERVAL_MS = 200;
+
+function getAllowedVoters(code) {
+  let set = allowedVotersBySession.get(code);
+  if (!set) {
+    set = new Set();
+    allowedVotersBySession.set(code, set);
+  }
+  return set;
+}
 
 function isValidHostSecret(expected, provided) {
   if (typeof expected !== 'string' || typeof provided !== 'string') return false;
@@ -37,6 +50,7 @@ function toPublicSession(session) {
     id: session.id,
     code: session.code,
     status: session.status,
+    is_locked: Boolean(session.is_locked),
     created_at: session.created_at,
     voting_ends_at: session.voting_ends_at,
   };
@@ -194,6 +208,24 @@ function registerHandlers(io, socket) {
       const session = await getSessionByCode(code);
       if (!session) return sendAck({ ok: false, error: 'Session introuvable' });
 
+      const allowedVoters = getAllowedVoters(session.code);
+      const isAlreadyAllowed = allowedVoters.has(voterId);
+
+      if (session.is_locked && !isAlreadyAllowed) {
+        const existingVote = await pool.query(
+          'SELECT id FROM votes WHERE session_id = ? AND voter_id = ? LIMIT 1',
+          [session.id, voterId]
+        );
+        if (existingVote.length === 0) {
+          return sendAck({
+            ok: false,
+            locked: true,
+            error: 'Cette session est verrouillée. De nouveaux participants ne peuvent plus la rejoindre.',
+          });
+        }
+      }
+
+      allowedVoters.add(voterId);
       switchSocketRooms(io, socket, session.code, false);
       socket.data.voterId = voterId;
 
@@ -247,6 +279,13 @@ function registerHandlers(io, socket) {
       }
       const session = await getSessionByCode(code);
       if (!session) return sendAck({ ok: false, error: 'Session introuvable' });
+      if (session.is_locked && !getAllowedVoters(session.code).has(voterId)) {
+        return sendAck({
+          ok: false,
+          locked: true,
+          error: 'Cette session est verrouillée. De nouveaux participants ne peuvent plus la rejoindre.',
+        });
+      }
       if (!['voting', 'prolonged'].includes(session.status)) {
         return sendAck({ ok: false, error: "Le vote n'est pas ouvert" });
       }
@@ -379,10 +418,24 @@ function registerHandlers(io, socket) {
     });
   });
 
+  socket.on('toggle-lock-session', (payload, ack) => {
+    const data = (payload && typeof payload === 'object') ? payload : {};
+    return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
+      const nextLocked = data.locked !== undefined ? Boolean(data.locked) : !Boolean(session.is_locked);
+      await pool.query(
+        'UPDATE sessions SET is_locked = ? WHERE id = ?',
+        [nextLocked ? 1 : 0, session.id]
+      );
+      io.to(hostRoom(session.code)).emit('session-lock-updated', { is_locked: nextLocked });
+      sendAck({ ok: true, is_locked: nextLocked });
+    });
+  });
+
   socket.on('close-session', (payload, ack) => {
     const data = (payload && typeof payload === 'object') ? payload : {};
     return withHost(data.code, data.hostSecret, ack, async (session, sendAck) => {
       cancelTallyUpdate(session.code);
+      allowedVotersBySession.delete(session.code);
       await pool.query('DELETE FROM votes WHERE session_id = ?', [session.id]);
       await pool.query('DELETE FROM sessions WHERE id = ?', [session.id]);
       io.to(room(session.code)).emit('session-closed', { reason: 'closed' });
@@ -406,6 +459,7 @@ async function cleanupExpiredSessions(io) {
     );
     for (const s of expired) {
       cancelTallyUpdate(s.code);
+      allowedVotersBySession.delete(s.code);
       await pool.query('DELETE FROM sessions WHERE id = ?', [s.id]);
       io.to(room(s.code)).emit('session-closed', { reason: 'expired' });
     }
