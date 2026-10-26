@@ -7,6 +7,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-26
+
 ### Added
 - Possibilité pour l'organisateur de verrouiller ou déverrouiller la session en cours via un bouton d'action rapide dans l'en-tête et dans le volet latéral d'informations.
 - Blocage des nouveaux visiteurs lorsqu'une session est verrouillée, avec affichage d'un message explicite indiquant que la session n'accepte plus d'entrants.
@@ -88,7 +90,8 @@ et ce projet adhère à [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - Correction de l'affichage du dépouillement en mode présentation sans les compteurs de connexion.
 
-[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/emiliemichaud/vote-cdm/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/emiliemichaud/vote-cdm/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/emiliemichaud/vote-cdm/compare/v1.2.1...v1.3.0
